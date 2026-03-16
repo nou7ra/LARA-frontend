@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { FaStar, FaClock, FaGlobe, FaUser, FaPlay, FaChevronUp, FaChevronDown, FaArrowLeft } from "react-icons/fa";
 import api from "@/services/api";
@@ -34,12 +34,10 @@ function StartCourseButton({ courseId }: { courseId: string }) {
   const handleStart = async () => {
     setLoading(true);
     try {
-      // ✅ بيبعت courseId في الـ body
       const res = await api.post("/students/enroll", { courseId });
-      console.log(res.data.message); // "Enrolled successfully!" أو "Already enrolled"
+      console.log(res.data.message);
     } catch (err) {
       console.error("Enroll error:", err);
-      // حتى لو في error، كمّل للـ player
     } finally {
       router.push(`/course-player?courseId=${courseId}`);
       setLoading(false);
@@ -57,7 +55,7 @@ function StartCourseButton({ courseId }: { courseId: string }) {
   );
 }
 
-export default function CourseDetailFreePage() {
+function CourseDetailFreeContent() {
   const searchParams = useSearchParams();
   const courseId = searchParams.get("courseId");
 
@@ -117,7 +115,6 @@ export default function CourseDetailFreePage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #f59e0b; border-radius: 10px; }
       `}</style>
 
-      {/* Back */}
       <div className="px-8 py-6 animate-slideDown">
         <Link href="/courses-list" className="inline-flex items-center gap-2 text-gray-700 hover:text-orange-600 transition-colors group">
           <FaArrowLeft className="group-hover:-translate-x-1 transition-transform" />
@@ -126,9 +123,7 @@ export default function CourseDetailFreePage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-6 pb-16">
-        {/* Header */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12">
-          {/* Image */}
           <div className="animate-fadeInLeft">
             <div className="relative rounded-2xl overflow-hidden shadow-2xl group cursor-pointer aspect-video bg-orange-100">
               {course.image ? (
@@ -141,17 +136,14 @@ export default function CourseDetailFreePage() {
                   <FaPlay className="text-orange-500 text-2xl ml-1" />
                 </div>
               </div>
-              {/* FREE badge */}
               <div className="absolute top-4 left-4 bg-green-500 text-white px-3 py-1 rounded-full font-bold text-sm shadow-lg">
                 🎉 FREE
               </div>
             </div>
           </div>
 
-          {/* Info */}
           <div className="animate-fadeInRight">
             <h1 className="text-4xl font-bold text-gray-800 mb-6">{course.title}</h1>
-
             <div className="space-y-4 mb-6">
               {course.instructor?.name && (
                 <div className="flex items-center gap-3">
@@ -183,14 +175,12 @@ export default function CourseDetailFreePage() {
                 </div>
               )}
             </div>
-
             <div className="inline-block bg-green-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg">
               🎉 FREE COURSE
             </div>
           </div>
         </section>
 
-        {/* Description */}
         {course.description && (
           <section className="mb-12 animate-fadeInUp">
             <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-orange-100">
@@ -200,16 +190,13 @@ export default function CourseDetailFreePage() {
           </section>
         )}
 
-        {/* Content + Start */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Lessons list */}
           <div className="lg:col-span-2 animate-fadeInLeft">
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-orange-100">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Course Content</h2>
                 <span className="text-sm text-gray-500">{videos.length} lessons</span>
               </div>
-
               {videos.length === 0 ? (
                 <p className="text-gray-400 text-sm">No lessons available yet.</p>
               ) : (
@@ -222,7 +209,6 @@ export default function CourseDetailFreePage() {
                       </button>
                     </div>
                   )}
-
                   <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                     {displayedVideos.map((lesson, index) => (
                       <div key={lesson._id}
@@ -240,7 +226,6 @@ export default function CourseDetailFreePage() {
                       </div>
                     ))}
                   </div>
-
                   {videos.length > 5 && (
                     <div className="flex justify-center mt-4">
                       <button onClick={() => setShowAllContent(true)}
@@ -254,18 +239,24 @@ export default function CourseDetailFreePage() {
             </div>
           </div>
 
-          {/* Start button */}
           <div className="animate-fadeInRight">
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-orange-100 mb-6">
               <h2 className="text-xl font-bold text-gray-800 mb-3">Ready to start?</h2>
               <p className="text-gray-500 text-sm mb-4">This course is completely free. Enroll now and start learning!</p>
               <div className="text-3xl font-bold text-green-600 mb-4">FREE 🎉</div>
             </div>
-
             <StartCourseButton courseId={course._id} />
           </div>
         </section>
       </main>
     </div>
+  );
+}
+
+export default function CourseDetailFreePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CourseDetailFreeContent />
+    </Suspense>
   );
 }
