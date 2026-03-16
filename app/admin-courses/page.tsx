@@ -107,7 +107,7 @@ export default function AdminCoursesPage() {
                     ? course.instructor?.name || "—"
                     : course.instructor || "—",
                   status: (course.status as any) || "active",
-                  image: course.image || "",
+                  image: (course as any).image || "",
                   students: course.enrolledStudents?.length || 0,
                   rating: avgRating(course.reviews),
                   lessons: course.materials?.length || 0,
