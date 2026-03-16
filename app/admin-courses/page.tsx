@@ -101,7 +101,7 @@ export default function AdminCoursesPage() {
               <AdminCourseCard
                 key={course._id}
                 course={{
-                  id: course._id,
+                  id: String(course._id),
                   name: course.title || course.name || "—",
                   instructor: typeof course.instructor === "object"
                     ? course.instructor?.name || "—"
