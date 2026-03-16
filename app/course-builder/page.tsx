@@ -9,6 +9,8 @@ import {
   CourseBuilderFooter,
 } from "@/components/course-builder";
 
+export const dynamic = "force-dynamic";
+
 interface Lesson {
   id: number;
   title: string;
@@ -123,8 +125,6 @@ export default function CourseBuilder() {
     <div className="min-h-screen" style={{ background: "linear-gradient(to bottom, #FFD9B8, #FFE6C5)" }}>
       <CourseBuilderNavbar />
       <main className="max-w-6xl mx-auto px-6 py-8">
-
-        {/* ✅ لما يضغط Final Quiz يروح لصفحة /final-quiz */}
         <CourseHeader
           activeTab={activeTab}
           onTabChange={(tab) => {
@@ -136,7 +136,6 @@ export default function CourseBuilder() {
           }}
         />
 
-        {/* ✅ Course Content Tab */}
         {activeTab === "content" && (
           <>
             <div className="bg-white rounded-xl p-6 shadow-sm mb-6 space-y-4">
@@ -185,7 +184,6 @@ export default function CourseBuilder() {
                     placeholder="e.g. 2 hours"
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400" />
                 </div>
-              
               </div>
             </div>
 
