@@ -6,7 +6,7 @@ interface User {
   id: number;
   name: string;
   email: string;
-  progress: number;
+  role?: string;
   status: "Active" | "Pending" | "Suspended";
 }
 
@@ -29,14 +29,21 @@ const UserTable: React.FC<UserTableProps> = ({
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Active":
-        return "text-green-600";
-      case "Pending":
-        return "text-orange-500";
-      case "Suspended":
-        return "text-red-500";
+      case "Active": return "text-green-600";
+      case "Pending": return "text-orange-500";
+      case "Suspended": return "text-red-500";
+      default: return "text-gray-600";
+    }
+  };
+
+  const getRoleBadge = (role?: string) => {
+    switch (role) {
+      case "instructor":
+        return <span className="px-2.5 py-1 bg-blue-100 text-blue-600 text-xs font-semibold rounded-full">Instructor</span>;
+      case "admin":
+        return <span className="px-2.5 py-1 bg-purple-100 text-purple-600 text-xs font-semibold rounded-full">Admin</span>;
       default:
-        return "text-gray-600";
+        return <span className="px-2.5 py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full">Student</span>;
     }
   };
 
@@ -72,14 +79,14 @@ const UserTable: React.FC<UserTableProps> = ({
               <th className="py-4 px-6 text-left text-sm font-semibold text-orange-600">ID</th>
               <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">Name</th>
               <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">Email</th>
-              <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">progress</th>
+              <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">Role</th>
               <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">Status</th>
               <th className="py-4 px-4 text-left text-sm font-semibold text-orange-600">Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.map((user, index) => (
-              <tr 
+              <tr
                 key={user.id}
                 className="border-b border-gray-50 hover:bg-orange-50/30 transition-colors animate-fadeIn"
                 style={{ animationDelay: `${0.05 * index}s` }}
@@ -92,57 +99,30 @@ const UserTable: React.FC<UserTableProps> = ({
                       onChange={() => onSelectUser(user.id)}
                       className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400 cursor-pointer"
                     />
-                    <span className="text-sm text-gray-800">{user.id}</span>
+                    <span className="text-sm text-gray-800 truncate max-w-[160px]">{user.id}</span>
                   </div>
                 </td>
                 <td className="py-4 px-4 text-sm text-gray-800 font-medium">{user.name}</td>
                 <td className="py-4 px-4 text-sm text-gray-600">{user.email}</td>
-                <td className="py-4 px-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-500"
-                        style={{ width: `${user.progress}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-600 min-w-[40px]">{user.progress}%</span>
-                  </div>
-                </td>
+                <td className="py-4 px-4">{getRoleBadge(user.role)}</td>
                 <td className={`py-4 px-4 text-sm font-medium ${getStatusColor(user.status)}`}>
                   {user.status}
                 </td>
                 <td className="py-4 px-4">
-                  {user.status !== "Suspended" && user.status !== "Pending" ? (
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => onEdit(user.id)}
-                        className="text-sm text-gray-700 hover:text-orange-600 transition-colors font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button 
-                        onClick={() => onDelete(user.id)}
-                        className="text-sm text-red-500 hover:text-red-700 transition-colors font-medium"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ) : user.status === "Pending" ? (
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => onEdit(user.id)}
-                        className="text-sm text-gray-700 hover:text-orange-600 transition-colors font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button 
-                        onClick={() => onDelete(user.id)}
-                        className="text-sm text-red-500 hover:text-red-700 transition-colors font-medium"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => onEdit(user.id)}
+                      className="text-sm text-gray-700 hover:text-orange-600 transition-colors font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => onDelete(user.id)}
+                      className="text-sm text-red-500 hover:text-red-700 transition-colors font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

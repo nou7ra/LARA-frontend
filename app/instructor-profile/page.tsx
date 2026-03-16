@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { FaArrowLeft } from "react-icons/fa";
+import api from "@/services/api"; // ✅ بنستخدم الـ api instance اللي فيها التوكن
 import {
   InstructorProfileNavbar,
   ProfileImage,
@@ -11,51 +12,91 @@ import {
   PasswordField,
   InstructorProfileFooter,
 } from "@/components/instructor-profile";
-import { defaultInstructorProfile } from "@/data/instructorProfile";
 
 export default function InstructorProfile() {
-  const [firstName, setFirstName] = useState(defaultInstructorProfile.firstName);
-  const [lastName, setLastName] = useState(defaultInstructorProfile.lastName);
-  const [email, setEmail] = useState(defaultInstructorProfile.email);
-  const [phone, setPhone] = useState(defaultInstructorProfile.phone);
-  const [bio, setBio] = useState(defaultInstructorProfile.bio);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [bio, setBio] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  const handleSaveChanges = () => {
-    // Validate fields
+  // ✅ States للـ feedback
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // ✅ جلب بيانات المستخدم من localStorage عند فتح الصفحة
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      const nameParts = user.name ? user.name.split(" ") : ["", ""];
+      setFirstName(nameParts[0] || "");
+      setLastName(nameParts.slice(1).join(" ") || "");
+      setEmail(user.email || "");
+      setPhone(user.phone || "");
+      setBio(user.bio || "");
+    }
+  }, []);
+
+  // ✅ حفظ البيانات عن طريق الباك
+  const handleSaveChanges = async () => {
     if (!firstName || !lastName || !email) {
-      alert("Please fill in all required fields");
+      setErrorMsg("Please fill in all required fields.");
       return;
     }
 
-    // TODO: Implement save logic
-    console.log("Saving profile:", {
-      firstName,
-      lastName,
-      email,
-      phone,
-      bio,
-      currentPassword: currentPassword ? "****" : "",
-      newPassword: newPassword ? "****" : "",
-    });
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
 
-    alert("Profile updated successfully!");
+    try {
+      // ✅ بنبعت التعديلات للباك
+      const response = await api.put("/instructor/profile", {
+        name: `${firstName} ${lastName}`,
+        email,
+        phone,
+        bio,
+        ...(currentPassword && newPassword && {
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      // ✅ لو نجح، نحدث الـ localStorage
+      const updatedUser = {
+        ...JSON.parse(localStorage.getItem("user") || "{}"),
+        name: `${firstName} ${lastName}`,
+        email,
+        phone,
+        bio,
+      };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+
+      setSuccessMsg("Profile updated successfully! ✅");
+      setCurrentPassword("");
+      setNewPassword("");
+    } catch (error) {
+      console.error("Update profile error:", error);
+      setErrorMsg(
+        error.response?.data?.message || "Something went wrong. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleImageChange = () => {
-    // TODO: Implement image upload
     console.log("Change profile image");
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#FFD9B8] to-[#FFF7E6]">
-      {/* Navigation Bar */}
       <InstructorProfileNavbar />
 
-      {/* Main Content */}
       <main className="max-w-2xl mx-auto px-6 py-8">
-        {/* Back Button */}
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-gray-800 hover:text-orange-600 transition-colors mb-6 animate-fadeIn"
@@ -64,17 +105,13 @@ export default function InstructorProfile() {
           <span className="font-medium">Back</span>
         </Link>
 
-        {/* Profile Form */}
         <div className="bg-white/50 backdrop-blur-sm rounded-3xl p-8 shadow-lg">
-          {/* Profile Image */}
           <ProfileImage
-            imageUrl={defaultInstructorProfile.imageUrl}
+            imageUrl="/images/instructor/instructor-01.jpg"
             onImageChange={handleImageChange}
           />
 
-          {/* Form Fields */}
           <div className="space-y-5">
-            {/* Name Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <ProfileField
                 label="First Name"
@@ -92,7 +129,6 @@ export default function InstructorProfile() {
               />
             </div>
 
-            {/* Email & Phone Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <ProfileField
                 label="Email"
@@ -112,14 +148,8 @@ export default function InstructorProfile() {
               />
             </div>
 
-            {/* Bio */}
-            <ProfileBio
-              value={bio}
-              onChange={setBio}
-              delay={0.3}
-            />
+            <ProfileBio value={bio} onChange={setBio} delay={0.3} />
 
-            {/* Password Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <PasswordField
                 label="Current Password"
@@ -137,23 +167,30 @@ export default function InstructorProfile() {
               />
             </div>
 
-            {/* Save Button */}
-            <div 
+            {/* ✅ رسائل النجاح والخطأ */}
+            {successMsg && (
+              <p className="text-green-600 text-sm font-medium">{successMsg}</p>
+            )}
+            {errorMsg && (
+              <p className="text-red-500 text-sm font-medium">{errorMsg}</p>
+            )}
+
+            <div
               className="flex justify-end pt-4 animate-slideUp"
               style={{ animationDelay: "0.45s" }}
             >
               <button
                 onClick={handleSaveChanges}
-                className="px-8 py-3 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FFB84D] text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
+                disabled={loading}
+                className="px-8 py-3 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FFB84D] text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                Save Changes
+                {loading ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Footer */}
       <InstructorProfileFooter />
     </div>
   );

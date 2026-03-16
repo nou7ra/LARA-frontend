@@ -2,139 +2,345 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { FaShare, FaBookmark, FaCheckCircle, FaPlayCircle, FaLock, FaPaperPlane, FaImage, FaLink, FaThumbsUp } from "react-icons/fa";
+import React, { useState, useEffect, useRef } from "react";
 
-// Sessions Data
-const sessions = [
-  { id: 1, title: "01. Introduction to UI Design", completed: true },
-  { id: 2, title: "02. Is UI Design an important field with a future?", completed: true },
-  { id: 3, title: "03. What type of device do you need?", completed: true },
-  { id: 4, title: "04. Everything you need to know about colors", completed: true },
-  { id: 5, title: "05. Exercitation elit incididunt esse", completed: false, active: true },
-  { id: 6, title: "06. Everything you need to know about texts", completed: false },
-];
+type YTPlayer = {
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  destroy: () => void;
+};
+import { useSearchParams } from "next/navigation";
+import { FaShare, FaBookmark, FaCheckCircle, FaPlayCircle, FaLock, FaPaperPlane, FaThumbsUp } from "react-icons/fa";
+import api from "@/services/api";
 
-// Comments Data
-const comments = [
-  {
-    id: 1,
-    author: "Anas",
-    time: "12:05 Am",
-    avatar: "/images/Ellipse%2069%20(1).png",
-    text: "The course is excellent, and the explanation method is very simple and clear. I truly benefited from every lesson. Thank you for the wonderful content!",
-    likes: 0,
-  },
-  {
-    id: 2,
-    author: "nour",
-    time: "3:01 pm",
-    avatar: "/images/Ellipse%2069.png",
-    text: "The explanation is practical and straightforward, and I loved that the examples are realistic and easy to apply. I recommend this course to anyone starting out.",
-    likes: 0,
-  },
-];
+interface Lesson {
+  _id: string;
+  title: string;
+  type: "video" | "pdf";
+  url: string;
+}
+
+interface Course {
+  _id: string;
+  title: string;
+  description: string;
+  level: string;
+  image?: string;
+  instructor?: { name: string };
+  materials?: Lesson[];
+}
+
+interface Comment {
+  id: number;
+  author: string;
+  time: string;
+  text: string;
+  likes: number;
+}
+
+const getYouTubeId = (url: string): string => {
+  if (!url) return "";
+  if (url.includes("youtube.com/watch?v=")) return url.split("v=")[1]?.split("&")[0] || "";
+  if (url.includes("youtu.be/")) return url.split("youtu.be/")[1]?.split("?")[0] || "";
+  return "";
+};
+
+const isYouTube = (url: string) => url?.includes("youtube.com") || url?.includes("youtu.be");
+const isGoogleDrive = (url: string) => url?.includes("drive.google.com");
+
+const getDriveEmbedUrl = (url: string) => {
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return `https://drive.google.com/file/d/${match[1]}/preview`;
+  return url;
+};
 
 export default function CoursePlayerPage() {
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get("courseId");
+
+  const userObj = typeof window !== "undefined"
+    ? JSON.parse(localStorage.getItem("user") || "{}")
+    : {};
+  const studentId = userObj._id || userObj.id || userObj.email || "guest";
+  const studentName = userObj.name || "You";
+
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [course, setCourse] = useState<Course | null>(null);
+  const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
+  const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const ytContainerRef = useRef<HTMLDivElement>(null);
+  const ytIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ytPlayerRef = useRef<YTPlayer | null>(null);
+  const currentLessonIdRef = useRef<string>("");
+  const completedLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (courseId) {
+      const saved = localStorage.getItem(`completed_${studentId}_${courseId}`);
+      if (saved) setCompletedLessons(new Set(JSON.parse(saved)));
+      completedLoadedRef.current = true;
+    }
+  }, [courseId]);
+
+  useEffect(() => {
+    if (!courseId) {
+      window.location.href = "/courses-list";
+    }
+  }, [courseId]);
+
+  useEffect(() => {
+    if (courseId) {
+      const saved = localStorage.getItem(`comments_${studentId}_${courseId}`);
+      if (saved) setComments(JSON.parse(saved));
+    }
+  }, [courseId]);
+
+  useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        const res = await api.get("/students/courses");
+        const found = (res.data.courses || []).find((c: Course) => c._id === courseId);
+        if (found) {
+          setCourse(found);
+          const firstVideo = found.materials?.find((m: Lesson) => m.type === "video");
+          if (firstVideo) setCurrentLesson(firstVideo);
+          else if (found.materials?.length > 0) setCurrentLesson(found.materials[0]);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (courseId) fetchCourse();
+    else setLoading(false);
+  }, [courseId]);
+
+  useEffect(() => {
+    setVideoProgress(0);
+    currentLessonIdRef.current = currentLesson?._id || "";
+    if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
+    if (ytPlayerRef.current) { try { ytPlayerRef.current.destroy(); } catch {} ytPlayerRef.current = null; }
+    if (!currentLesson || !isYouTube(currentLesson.url)) return;
+
+    const videoId = getYouTubeId(currentLesson.url);
+    if (!videoId) return;
+
+    const initPlayer = () => {
+      if (!ytContainerRef.current || !(window as any).YT?.Player) return;
+      ytPlayerRef.current = new (window as any).YT.Player(ytContainerRef.current, {
+        videoId,
+        playerVars: { autoplay: 0, controls: 1, rel: 0 },
+        events: {
+          onStateChange: (event: any) => {
+            if (event.data === 0) {
+              setVideoProgress(100);
+              if (currentLessonIdRef.current) {
+                setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
+              }
+            }
+            if (event.data === 1) {
+              if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
+              ytIntervalRef.current = setInterval(() => {
+                try {
+                  const player = ytPlayerRef.current;
+                  if (!player) return;
+                  const current = player.getCurrentTime?.() || 0;
+                  const duration = player.getDuration?.() || 1;
+                  const pct = Math.round((current / duration) * 100);
+                  setVideoProgress(pct);
+                  if (pct >= 95 && currentLessonIdRef.current) {
+                    setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
+                  }
+                } catch {}
+              }, 1000);
+            }
+            if (event.data === 2) {
+              if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
+            }
+          },
+        },
+      });
+    };
+
+    if ((window as any).YT?.Player) {
+      initPlayer();
+    } else {
+      if (!document.getElementById("yt-api-script")) {
+        const tag = document.createElement("script");
+        tag.id = "yt-api-script";
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+      }
+      (window as any).onYouTubeIframeAPIReady = initPlayer;
+    }
+
+    return () => {
+      if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
+      if (ytPlayerRef.current) { try { ytPlayerRef.current.destroy(); } catch {} ytPlayerRef.current = null; }
+    };
+  }, [currentLesson]);
+
+  const videos = (course?.materials || []).filter(m => m.type === "video");
+  const pdfs = (course?.materials || []).filter(m => m.type === "pdf");
+
+  const toggleComplete = (id: string) => {
+    setCompletedLessons(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    if (video && video.duration) {
+      const pct = Math.round((video.currentTime / video.duration) * 100);
+      setVideoProgress(pct);
+      if (pct >= 90 && currentLesson) setCompletedLessons(prev => new Set([...prev, currentLesson._id]));
+    }
+  };
+
+  const handleAddComment = () => {
+    if (!commentText.trim()) return;
+    const newComment: Comment = {
+      id: Date.now(),
+      author: studentName,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      text: commentText.trim(),
+      likes: 0,
+    };
+    const updated = [newComment, ...comments];
+    setComments(updated);
+    if (courseId) localStorage.setItem(`comments_${studentId}_${courseId}`, JSON.stringify(updated));
+    setCommentText("");
+  };
+
+  const handleLike = (id: number) => {
+    const updated = comments.map(c => c.id === id ? { ...c, likes: c.likes + 1 } : c);
+    setComments(updated);
+    if (courseId) localStorage.setItem(`comments_${studentId}_${courseId}`, JSON.stringify(updated));
+  };
+
+  // ✅ Save completedLessons + احفظ في الباك
+  useEffect(() => {
+    if (courseId && completedLoadedRef.current) {
+      localStorage.setItem(`completed_${studentId}_${courseId}`, JSON.stringify([...completedLessons]));
+      const allVideos = (course?.materials || []).filter((m: any) => m.type === "video");
+      if (allVideos.length > 0) {
+        const pct = Math.round((completedLessons.size / allVideos.length) * 100);
+        localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(pct));
+
+        // ✅ احفظ في الباك
+        api.post("/students/save-progress", { courseId, progress: pct })
+          .catch(err => console.error("Save progress error:", err));
+      }
+    }
+  }, [completedLessons, courseId]);
+
+  // ✅ احفظ الـ partial progress كل 10%
+  useEffect(() => {
+    if (!courseId || !currentLesson || !course) return;
+    const allVideos = (course.materials || []).filter((m: any) => m.type === "video");
+    if (allVideos.length === 0) return;
+
+    const completedFull = completedLessons.size;
+    const partialFromCurrent = completedLessons.has(currentLesson._id) ? 0 : videoProgress / 100;
+    const totalPct = Math.round(((completedFull + partialFromCurrent) / allVideos.length) * 100);
+    const finalPct = Math.min(totalPct, 100);
+
+    localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(finalPct));
+
+    // ✅ احفظ في الباك كل 10%
+    if (finalPct % 10 === 0 && finalPct > 0) {
+      api.post("/students/save-progress", { courseId, progress: finalPct })
+        .catch(err => console.error("Save progress error:", err));
+    }
+  }, [videoProgress, courseId, currentLesson, completedLessons, course]);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-orange-50">
+      <p className="text-gray-500 text-lg animate-pulse">Loading course...</p>
+    </div>
+  );
+
+  if (!course) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-orange-50">
+      <p className="text-red-500 text-lg">Course not found.</p>
+      <Link href="/courses-list" className="text-orange-500 underline">Back to Courses</Link>
+    </div>
+  );
+
+  const overallPct = videos.length > 0 ? Math.round((completedLessons.size / videos.length) * 100) : 0;
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleSave = async () => {
+    if (saved) return;
+    try {
+      await api.post("/students/save-course", { courseId: course?._id });
+      setSaved(true);
+    } catch {
+      const savedCourses = JSON.parse(localStorage.getItem("savedCourses") || "[]");
+      if (!savedCourses.includes(course?._id)) {
+        savedCourses.push(course?._id);
+        localStorage.setItem("savedCourses", JSON.stringify(savedCourses));
+      }
+      setSaved(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
-      <style jsx global>{`
-        @keyframes fadeInDown {
-          from { opacity: 0; transform: translateY(-30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInLeft {
-          from { opacity: 0; transform: translateX(-30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes fadeInRight {
-          from { opacity: 0; transform: translateX(30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 1; transform: scale(1); }
-        }
+      <style>{`
+        @keyframes fadeInDown { from { opacity:0; transform:translateY(-30px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeInLeft { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes fadeInRight { from { opacity:0; transform:translateX(30px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
         .animate-fadeInDown { animation: fadeInDown 0.6s ease-out forwards; }
-        .animate-fadeInUp { animation: fadeInUp 0.6s ease-out forwards; }
         .animate-fadeInLeft { animation: fadeInLeft 0.6s ease-out forwards; }
         .animate-fadeInRight { animation: fadeInRight 0.6s ease-out forwards; }
-        .animate-scaleIn { animation: scaleIn 0.5s ease-out forwards; }
+        .animate-fadeInUp { animation: fadeInUp 0.6s ease-out forwards; }
       `}</style>
 
-      {/* ===== NAVBAR ===== */}
-      <header 
-        className="h-[70px] sticky top-0 z-50 flex items-center justify-between px-9 shadow-lg animate-fadeInDown"
-        style={{ background: "linear-gradient(to right, #ffb45a, #ffe6a5)" }}
-      >
-        {/* Left - Logo & Search */}
+      <header className="h-[70px] sticky top-0 z-50 flex items-center justify-between px-9 shadow-lg animate-fadeInDown"
+        style={{ background: "linear-gradient(to right, #ffb45a, #ffe6a5)" }}>
         <div className="flex items-center gap-4">
-          <Link href="/" className="hover:scale-105 transition-transform">
-            <Image src="/images/about/logo.png" alt="LARA logo" width={55} height={55} className="rounded-lg" />
+          <Link href="/my-courses">
+            <Image src="/images/about/logo.png" alt="LARA" width={55} height={55} className="rounded-lg" />
           </Link>
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search"
-              className="w-[190px] px-3.5 py-1.5 rounded-3xl border-none outline-none bg-white text-sm focus:ring-2 focus:ring-orange-300"
-            />
-          </div>
+          <input type="text" placeholder="Search" className="w-[190px] px-3.5 py-1.5 rounded-3xl border-none outline-none bg-white text-sm" />
         </div>
-
-        {/* Center - Navigation */}
         <nav className="hidden md:flex gap-5 text-sm">
-          <Link href="/" className="text-gray-800 hover:font-semibold hover:text-orange-600 transition-colors">
-            Home
-          </Link>
-          <Link href="/student-dashboard" className="text-gray-800 hover:font-semibold hover:text-orange-600 transition-colors">
-            Dashboard
-          </Link>
-          <Link href="/course-player" className="text-gray-800 font-semibold border-b-2 border-gray-800 pb-0.5">
-            Course Player
-          </Link>
-          <Link href="/courses" className="text-gray-800 hover:font-semibold hover:text-orange-600 transition-colors">
-            Recommended Courses
-          </Link>
-          <Link href="/quiz" className="text-gray-800 hover:font-semibold hover:text-orange-600 transition-colors">
-            Quiz
-          </Link>
-          <Link href="/about" className="text-gray-800 hover:font-semibold hover:text-orange-600 transition-colors">
-            About
-          </Link>
+          <Link href="/my-courses" className="text-gray-800 hover:font-semibold">Home</Link>
+          <Link href="/student-dashboard" className="text-gray-800 hover:font-semibold">Dashboard</Link>
+          <Link href="/course-player" className="text-gray-800 font-semibold border-b-2 border-gray-800">Course Player</Link>
+          <Link href="/courses" className="text-gray-800 hover:font-semibold">Recommended Courses</Link>
+          <Link href="/quiz" className="text-gray-800 hover:font-semibold">Quiz</Link>
+          <Link href="/about" className="text-gray-800 hover:font-semibold">About</Link>
         </nav>
-
-        {/* Right - Profile & Menu */}
-        <div className="flex items-center gap-4 relative">
-          <div 
-            className="cursor-pointer hover:scale-110 transition-transform"
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
-          >
-            <Image
-              src="/images/dashboard/Ellipse%2068.png"
-              alt="Profile"
-              width={40}
-              height={40}
-              className="rounded-full object-cover border-2 border-white shadow-md"
-            />
+        <div className="relative">
+          <div className="cursor-pointer" onClick={() => setShowProfileMenu(!showProfileMenu)}>
+            <Image src="/images/dashboard/Ellipse%2068.png" alt="Profile" width={40} height={40} className="rounded-full border-2 border-white shadow-md" />
           </div>
-
-          {/* Profile Menu Dropdown */}
           {showProfileMenu && (
-            <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2 z-50 animate-fadeInDown">
-              <Link href="/profile" className="block px-4 py-2 text-gray-800 text-sm hover:bg-[#ffe6c5]">
-                Profile
-              </Link>
-              <Link href="#" className="block px-4 py-2 text-gray-800 text-sm hover:bg-[#ffe6c5]">
-                Settings
-              </Link>
-              <Link href="/login" className="block px-4 py-2 text-gray-800 text-sm hover:bg-[#ffe6c5]">
+            <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2 z-50">
+              <Link href="/profile" className="block px-4 py-2 text-sm hover:bg-[#ffe6c5]">Profile</Link>
+              <Link href="/login" className="block px-4 py-2 text-sm hover:bg-[#ffe6c5]"
+                onClick={() => { localStorage.removeItem("token"); localStorage.removeItem("user"); }}>
                 Logout
               </Link>
             </div>
@@ -142,122 +348,100 @@ export default function CoursePlayerPage() {
         </div>
       </header>
 
-      {/* ===== MAIN CONTENT ===== */}
       <main className="max-w-7xl mx-auto px-8 py-8">
-        {/* Course Title & Actions */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 animate-fadeInUp">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">
-            UI Design, A User - Centered Approach
-          </h1>
+        <div className="flex flex-col md:flex-row justify-between items-start mb-6 gap-4 animate-fadeInUp">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{course.title}</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {course.instructor?.name && `By ${course.instructor.name} · `}
+              <span className="capitalize">{course.level}</span>
+            </p>
+          </div>
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-400 text-white rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2">
-              <FaShare /> Share
+            <button onClick={handleShare}
+              className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-400 text-white rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2">
+              <FaShare /> {copied ? "Copied! ✅" : "Share"}
             </button>
-            <button className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-400 text-white rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2">
-              <FaBookmark /> Save
+            <button onClick={handleSave}
+              className={`px-5 py-2.5 rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2 ${
+                saved ? "bg-green-500 text-white" : "bg-gradient-to-r from-orange-500 to-orange-400 text-white"
+              }`}>
+              <FaBookmark /> {saved ? "Saved ✅" : "Save"}
             </button>
           </div>
         </div>
 
-        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left - Video Player */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Video */}
-            <div className="bg-black rounded-2xl overflow-hidden shadow-2xl animate-fadeInLeft">
-              <div className="aspect-video relative">
-                <Image
-                  src="/images/courses/ui-design-video-thumbnail.jpg"
-                  alt="Video"
-                  fill
-                  className="object-cover opacity-70"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <button className="w-20 h-20 bg-white/90 rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-xl">
-                    <FaPlayCircle className="text-orange-500 text-5xl ml-1" />
-                  </button>
-                </div>
-                {/* Video Progress Bar */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                  <div className="flex items-center justify-between text-white text-sm mb-2">
-                    <span>6:12 / 21:53</span>
-                    <div className="flex items-center gap-3">
-                      <button>⚙️</button>
-                      <button>🔊</button>
-                      <button>⛶</button>
-                    </div>
-                  </div>
-                  <div className="h-1 bg-gray-600 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-600 rounded-full" style={{ width: "28%" }}></div>
+            <div className="bg-black rounded-2xl overflow-hidden shadow-2xl animate-fadeInLeft aspect-video">
+              {currentLesson?.url ? (
+                isYouTube(currentLesson.url) ? (
+                  <div ref={ytContainerRef} className="w-full h-full" />
+                ) : isGoogleDrive(currentLesson.url) ? (
+                  <iframe src={getDriveEmbedUrl(currentLesson.url)} className="w-full h-full" allowFullScreen />
+                ) : (
+                  <video ref={videoRef} src={currentLesson.url} controls className="w-full h-full" onTimeUpdate={handleTimeUpdate} />
+                )
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white text-center">
+                  <div>
+                    <div className="text-6xl mb-4">▶️</div>
+                    <p>{currentLesson?.title || "Select a lesson"}</p>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Comment Section */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg animate-fadeInUp" style={{ animationDelay: "0.1s" }}>
-              {/* Comment Input */}
-              <div className="flex items-start gap-3 mb-6 pb-6 border-b border-gray-200">
-                <Image
-                  src="/images/Ellipse%2068%20(1).png"
-                  alt="Your Profile"
-                  width={50}
-                  height={50}
-                  className="rounded-full"
-                />
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    placeholder="Comment"
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 rounded-full outline-none focus:ring-2 focus:ring-orange-300 text-sm"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button className="p-3 hover:bg-gray-100 rounded-full transition-colors">
-                    <FaImage className="text-gray-600 text-lg" />
-                  </button>
-                  <button className="p-3 hover:bg-gray-100 rounded-full transition-colors">
-                    <FaLink className="text-gray-600 text-lg" />
-                  </button>
-                  <button className="p-3 bg-blue-500 hover:bg-blue-600 rounded-full transition-colors">
-                    <FaPaperPlane className="text-white text-lg" />
-                  </button>
+            {pdfs.length > 0 && (
+              <div className="bg-white rounded-2xl p-5 shadow-lg">
+                <h3 className="font-bold text-lg mb-3">📄 Course Materials</h3>
+                <div className="space-y-2">
+                  {pdfs.map(pdf => (
+                    <a key={pdf._id} href={pdf.url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all">
+                      <span className="text-2xl">📄</span>
+                      <span className="text-sm font-medium text-gray-700">{pdf.title}</span>
+                      <span className="ml-auto text-orange-500 text-xs">Open →</span>
+                    </a>
+                  ))}
                 </div>
               </div>
+            )}
 
-              {/* Comments List */}
-              <div className="space-y-6">
-                {comments.map((comment, index) => (
-                  <div key={comment.id} className="animate-scaleIn" style={{ animationDelay: `${0.2 + index * 0.1}s` }}>
-                    <div className="flex items-start gap-3">
-                      <Image
-                        src={comment.avatar}
-                        alt={comment.author}
-                        width={45}
-                        height={45}
-                        className="rounded-full"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-gray-900">{comment.author}</span>
-                          <span className="text-gray-500 text-sm">{comment.time}</span>
-                        </div>
-                        <p className="text-gray-700 text-sm leading-relaxed mb-2">
-                          {comment.text}
-                        </p>
-                        <div className="flex items-center gap-4">
-                          <button className="flex items-center gap-1.5 text-blue-600 hover:text-blue-700 text-sm font-semibold">
-                            <FaThumbsUp className="text-lg" />
-                          </button>
-                          <button className="text-gray-600 hover:text-gray-800 text-sm font-semibold">
-                            Replay
-                          </button>
-                        </div>
+            <div className="bg-white rounded-2xl p-6 shadow-lg animate-fadeInUp">
+              <h3 className="font-bold text-lg mb-4">💬 Comments ({comments.length})</h3>
+              <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-200">
+                <div className="w-10 h-10 rounded-full bg-orange-400 flex items-center justify-center text-white font-bold flex-shrink-0">
+                  {studentName[0]?.toUpperCase()}
+                </div>
+                <input type="text" placeholder="Add a comment..." value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleAddComment()}
+                  className="flex-1 px-4 py-3 bg-gray-50 rounded-full outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-gray-200" />
+                <button onClick={handleAddComment} className="p-3 bg-blue-500 hover:bg-blue-600 rounded-full transition-colors">
+                  <FaPaperPlane className="text-white" />
+                </button>
+              </div>
+              {comments.length === 0 && (
+                <p className="text-center text-gray-400 py-4">No comments yet. Be the first! 💬</p>
+              )}
+              <div className="space-y-5">
+                {comments.map(c => (
+                  <div key={c.id} className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center text-white font-bold flex-shrink-0">
+                      {c.author[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 text-sm">{c.author}</span>
+                        <span className="text-gray-400 text-xs">{c.time}</span>
+                      </div>
+                      <p className="text-gray-700 text-sm leading-relaxed mb-2">{c.text}</p>
+                      <div className="flex gap-4">
+                        <button onClick={() => handleLike(c.id)} className="flex items-center gap-1 text-blue-500 text-sm font-semibold">
+                          <FaThumbsUp /> Like {c.likes > 0 && <span className="text-xs text-gray-400">({c.likes})</span>}
+                        </button>
+                        <button className="text-gray-500 text-sm font-semibold">Reply</button>
                       </div>
                     </div>
                   </div>
@@ -266,150 +450,94 @@ export default function CoursePlayerPage() {
             </div>
           </div>
 
-          {/* Right - Sessions List */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl p-6 shadow-lg sticky top-24 animate-fadeInRight">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-gray-900">Sessions</h3>
-                <span className="text-sm font-semibold text-gray-600">
-                  <span className="text-orange-600">5/21</span> Completed
+                <span className="text-sm font-semibold">
+                  <span className="text-orange-600">{completedLessons.size}</span>/{videos.length} Done
                 </span>
               </div>
 
-              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                {sessions.map((session, index) => (
-                  <div
-                    key={session.id}
-                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md animate-scaleIn ${
-                      session.active
-                        ? "bg-red-50 border-red-300"
-                        : session.completed
-                        ? "bg-white border-gray-200 hover:border-orange-300"
-                        : "bg-gray-50 border-gray-200"
-                    }`}
-                    style={{ animationDelay: `${0.1 + index * 0.05}s` }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        {session.completed ? (
-                          <FaCheckCircle className="text-blue-500 text-xl flex-shrink-0" />
-                        ) : session.active ? (
-                          <FaPlayCircle className="text-red-600 text-xl flex-shrink-0" />
-                        ) : (
-                          <FaLock className="text-gray-400 text-lg flex-shrink-0" />
-                        )}
-                        <span
-                          className={`text-sm font-medium ${
-                            session.active
-                              ? "text-red-700 font-semibold"
-                              : session.completed
-                              ? "text-gray-700"
-                              : "text-gray-500"
-                          }`}
-                        >
-                          {session.title}
-                        </span>
+              {videos.length === 0 ? (
+                <p className="text-gray-400 text-sm">No video lessons yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                  {videos.map((lesson, index) => {
+                    const isActive = currentLesson?._id === lesson._id;
+                    const isDone = completedLessons.has(lesson._id);
+                    return (
+                      <div key={lesson._id} onClick={() => setCurrentLesson(lesson)}
+                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${
+                          isActive ? "bg-orange-50 border-orange-400"
+                          : isDone ? "bg-green-50 border-green-200"
+                          : "bg-white border-gray-200 hover:border-orange-300"
+                        }`}>
+                        <div className="flex items-center gap-3">
+                          {isDone
+                            ? <FaCheckCircle className="text-green-500 text-xl flex-shrink-0" />
+                            : isActive
+                            ? <FaPlayCircle className="text-orange-500 text-xl flex-shrink-0" />
+                            : <FaLock className="text-gray-400 text-lg flex-shrink-0" />}
+                          <p className={`text-sm font-medium flex-1 ${isActive ? "text-orange-700 font-semibold" : "text-gray-700"}`}>
+                            {String(index + 1).padStart(2, "0")}. {lesson.title}
+                          </p>
+                          <button onClick={e => { e.stopPropagation(); toggleComplete(lesson._id); }}
+                            className={`text-xs px-2 py-1 rounded-full border transition-all ${
+                              isDone ? "bg-green-100 border-green-300 text-green-600" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-orange-100"
+                            }`}>
+                            {isDone ? "✓" : "○"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {currentLesson && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span className="truncate pr-1">📺 Current Lesson</span>
+                    <span className="font-bold text-orange-600 flex-shrink-0">{videoProgress}%</span>
                   </div>
-                ))}
-              </div>
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-300"
+                      style={{ width: `${videoProgress}%` }} />
+                  </div>
+                  {videoProgress >= 95 && <p className="text-green-500 text-xs mt-1 font-semibold">✅ Completed!</p>}
+                </div>
+              )}
+
+              {videos.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Overall Progress</span>
+                    <span className="font-semibold text-orange-600">{overallPct}%</span>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full transition-all duration-500"
+                      style={{ width: `${overallPct}%` }} />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </main>
 
-      {/* ===== FOOTER ===== */}
-      <footer className="px-10 py-8 mt-10 relative overflow-hidden" style={{ background: "linear-gradient(to right, #ffb45a, #ffe6a5)" }}>
-        {/* Top Section */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 fade-up" style={{ animationDelay: '0.1s', opacity: 0 }}>
-          <div className="flex flex-col items-center md:items-start mb-4 md:mb-0">
-            <Image src="/images/my-courses/logo.png" alt="LARA" width={70} height={70} className="hover:scale-105 transition-transform duration-300 rounded-lg" />
-          </div>
-          
-          {/* Social Icons */}
+      <footer className="px-10 py-8 mt-10" style={{ background: "linear-gradient(to right, #ffb45a, #ffe6a5)" }}>
+        <div className="flex justify-between items-center mb-6">
+          <Image src="/images/my-courses/logo.png" alt="LARA" width={70} height={70} className="rounded-lg" />
           <div className="flex gap-3">
-            <div className="social-btn w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold">f</span>
-            </div>
-            <div className="social-btn w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold">𝕏</span>
-            </div>
-            <div className="social-btn w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold">in</span>
-            </div>
-            <div className="social-btn w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
-              <span className="text-white">📷</span>
-            </div>
-            <div className="social-btn w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
-              <span className="text-white">▶️</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-          {/* Quick Links */}
-          <div className="footer-card rounded-2xl p-5 slide-in" style={{ animationDelay: '0.2s', opacity: 0 }}>
-            <h4 className="text-[#8B4513] font-bold text-lg mb-4 flex items-center gap-2">
-              <span className="text-xl">🚀</span> Quick Links
-            </h4>
-            <ul className="space-y-2 text-sm text-[#5D4E37]">
-              <li className="footer-link"><Link href="/">Home</Link></li>
-              <li className="footer-link"><Link href="/courses">All Courses</Link></li>
-              <li className="footer-link"><Link href="#">Instructors</Link></li>
-              <li className="footer-link"><Link href="/about">About Us</Link></li>
-            </ul>
-          </div>
-
-          {/* Support */}
-          <div className="footer-card rounded-2xl p-5 slide-in" style={{ animationDelay: '0.3s', opacity: 0 }}>
-            <h4 className="text-[#8B4513] font-bold text-lg mb-4 flex items-center gap-2">
-              <span className="text-xl">💬</span> Support
-            </h4>
-            <ul className="space-y-2 text-sm text-[#5D4E37]">
-              <li className="footer-link"><Link href="#">Help Center</Link></li>
-              <li className="footer-link"><Link href="#">Contact Us</Link></li>
-              <li className="footer-link"><Link href="#">Privacy Policy</Link></li>
-              <li className="footer-link"><Link href="#">Terms of Use</Link></li>
-            </ul>
-          </div>
-
-          {/* Account */}
-          <div className="footer-card rounded-2xl p-5 slide-in" style={{ animationDelay: '0.4s', opacity: 0 }}>
-            <h4 className="text-[#8B4513] font-bold text-lg mb-4 flex items-center gap-2">
-              <span className="text-xl">👤</span> Account
-            </h4>
-            <ul className="space-y-2 text-sm text-[#5D4E37]">
-              <li className="footer-link"><Link href="/profile">My Profile</Link></li>
-              <li className="footer-link"><Link href="/my-courses">My Courses</Link></li>
-              <li className="footer-link"><Link href="#">Settings</Link></li>
-              <li className="footer-link"><Link href="/login">Sign Out</Link></li>
-            </ul>
-          </div>
-
-          {/* Contact */}
-          <div className="footer-card rounded-2xl p-5 slide-in" style={{ animationDelay: '0.5s', opacity: 0 }}>
-            <h4 className="text-[#8B4513] font-bold text-lg mb-4 flex items-center gap-2">
-              <span className="text-xl">📞</span> Contact
-            </h4>
-            <div className="space-y-3 text-sm text-[#5D4E37]">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">📱</span>
-                <span>+123 456 789</span>
+            {["f", "𝕏", "in", "📷", "▶️"].map((icon, i) => (
+              <div key={i} className="w-11 h-11 bg-[#d98a47] rounded-full flex items-center justify-center">
+                <span className="text-white font-bold">{icon}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">✉️</span>
-                <span>info@lara.com</span>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-
-        {/* Bottom */}
-        <div className="border-t border-white/30 pt-5 flex flex-col md:flex-row justify-between items-center gap-3 fade-up" style={{ animationDelay: '0.6s', opacity: 0 }}>
-          <p className="text-sm text-[#5D4E37] font-medium">© 2025 LARA Platform - All Rights Reserved</p>
-        </div>
+        <p className="text-center text-sm text-[#5D4E37]">© 2025 LARA Platform - All Rights Reserved</p>
       </footer>
     </div>
   );

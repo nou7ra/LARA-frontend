@@ -30,7 +30,7 @@ const AdminCourseCard: React.FC<AdminCourseCardProps> = ({
   delay = 0,
 }) => {
   return (
-    <div 
+    <div
       className="bg-white rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 animate-slideUp"
       style={{ animationDelay: `${delay}s` }}
     >
@@ -80,14 +80,8 @@ const AdminCourseCard: React.FC<AdminCourseCardProps> = ({
         </button>
       </div>
 
-      {/* Edit/Delete Buttons */}
+      {/* ✅ Delete Button Only */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => onEdit(course.id)}
-          className="px-6 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-all"
-        >
-          Edit
-        </button>
         <button
           onClick={() => onDelete(course.id)}
           className="px-5 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-all"

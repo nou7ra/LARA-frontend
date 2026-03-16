@@ -1,78 +1,91 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   AdminNavbar,
   AdminCourseFilters,
   AdminCourseCard,
   Pagination,
 } from "@/components/admin-dashboard";
-import { adminCoursesData, AdminCourse } from "@/data/adminCourses";
+import api from "@/services/api";
+
+interface AdminCourse {
+  _id: string;
+  title?: string;
+  name?: string;
+  instructor?: { name: string; email: string } | string;
+  status?: string;
+  image?: string;
+  level?: string;
+  materials?: any[];
+  reviews?: any[];
+  enrolledStudents?: any[];
+}
 
 const COURSES_PER_PAGE = 9;
 
 export default function AdminCoursesPage() {
+  const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [courses, setCourses] = useState<AdminCourse[]>(adminCoursesData);
 
-  // Filter courses
+  useEffect(() => {
+    api.get("/admin/courses")
+      .then(res => setCourses(res.data || []))
+      .catch(err => console.error("Courses error:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
   const filteredCourses = useMemo(() => {
-    return courses.filter((course) => {
+    return courses.filter(course => {
+      const courseName = course.title || course.name || "";
+      const instructorName = typeof course.instructor === "object"
+        ? course.instructor?.name || ""
+        : course.instructor || "";
       const matchesSearch =
-        course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        course.instructor.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" || course.status === statusFilter;
+        courseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        instructorName.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || course.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [courses, searchTerm, statusFilter]);
 
-  // Paginate courses
   const totalPages = Math.ceil(filteredCourses.length / COURSES_PER_PAGE);
   const paginatedCourses = useMemo(() => {
     const start = (currentPage - 1) * COURSES_PER_PAGE;
     return filteredCourses.slice(start, start + COURSES_PER_PAGE);
   }, [filteredCourses, currentPage]);
 
-  // Handlers
-  const handleApprove = (id: number) => {
-    setCourses((prev) =>
-      prev.map((course) =>
-        course.id === id ? { ...course, status: "approved" as const } : course
-      )
-    );
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this course?")) return;
+    try {
+      await api.delete(`/admin/course/${id}`);
+      setCourses(prev => prev.filter(c => c._id !== id));
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
   };
 
-  const handleReject = (id: number) => {
-    setCourses((prev) =>
-      prev.map((course) =>
-        course.id === id ? { ...course, status: "rejected" as const } : course
-      )
-    );
+  const handleApprove = (id: string) => {
+    setCourses(prev => prev.map(c => c._id === id ? { ...c, status: "approved" } : c));
   };
 
-  const handleEdit = (id: number) => {
-    console.log("Edit course:", id);
-    // Add edit logic
+  const handleReject = (id: string) => {
+    setCourses(prev => prev.map(c => c._id === id ? { ...c, status: "rejected" } : c));
   };
 
-  const handleDelete = (id: number) => {
-    setCourses((prev) => prev.filter((course) => course.id !== id));
+  const avgRating = (reviews: any[] = []) => {
+    if (!reviews.length) return 0;
+    return reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
   };
 
   return (
-    <div 
-      className="min-h-screen"
-      style={{ background: "linear-gradient(to bottom, #FFD4A8, #FFECD9)" }}
-    >
-      {/* Navigation */}
+    <div className="min-h-screen" style={{ background: "linear-gradient(to bottom, #FFD4A8, #FFECD9)" }}>
       <AdminNavbar activeTab="course-management" />
 
-      {/* Main Content */}
       <main className="px-8 py-6 max-w-7xl mx-auto">
-        {/* Filters */}
         <AdminCourseFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
@@ -80,35 +93,43 @@ export default function AdminCoursesPage() {
           onStatusFilterChange={setStatusFilter}
         />
 
-        {/* Course Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {paginatedCourses.map((course, index) => (
-            <AdminCourseCard
-              key={course.id}
-              course={course}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              delay={0.05 * index}
-            />
-          ))}
-        </div>
+        {loading && <div className="text-center py-16 text-gray-500">Loading courses...</div>}
 
-        {/* Empty State */}
-        {paginatedCourses.length === 0 && (
-          <div className="text-center py-12 animate-fadeIn">
-            <p className="text-gray-500 text-lg">No courses found matching your criteria.</p>
+        {!loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {paginatedCourses.map((course, index) => (
+              <AdminCourseCard
+                key={course._id}
+                course={{
+                  id: course._id,
+                  name: course.title || course.name || "—",
+                  instructor: typeof course.instructor === "object"
+                    ? course.instructor?.name || "—"
+                    : course.instructor || "—",
+                  status: (course.status as any) || "active",
+                  image: course.image || "",
+                  students: course.enrolledStudents?.length || 0,
+                  rating: avgRating(course.reviews),
+                  lessons: course.materials?.length || 0,
+                }}
+                onApprove={() => handleApprove(course._id)}
+                onReject={() => handleReject(course._id)}
+                onEdit={() => {}}
+                onDelete={() => handleDelete(course._id)}
+                delay={0.05 * index}
+              />
+            ))}
           </div>
         )}
 
-        {/* Pagination */}
+        {!loading && paginatedCourses.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No courses found.</p>
+          </div>
+        )}
+
         {totalPages > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-          />
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
         )}
       </main>
     </div>

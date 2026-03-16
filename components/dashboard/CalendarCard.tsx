@@ -1,4 +1,5 @@
 import React from "react";
+import { useRouter } from "next/navigation";
 
 interface CalendarCardProps {
   month: string;
@@ -14,6 +15,7 @@ const CalendarCard: React.FC<CalendarCardProps> = ({
   days,
 }) => {
   const weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const router = useRouter();
 
   return (
     <div className="bg-white rounded-3xl p-6 shadow-lg h-full transform transition-all duration-300 hover:shadow-2xl">
@@ -46,9 +48,15 @@ const CalendarCard: React.FC<CalendarCardProps> = ({
         ))}
       </div>
 
-      <div className="mt-8">
+      <div className="mt-8 flex flex-col gap-3">
         <button className="w-full bg-[#FF8A00] text-white font-semibold py-3 rounded-full hover:bg-[#FF7700] transition-colors shadow-md">
           Apply Now
+        </button>
+        <button
+          onClick={() => router.push("/dashboard/add-session")}
+          className="w-full bg-white text-[#FF8A00] font-semibold py-3 rounded-full border-2 border-[#FF8A00] hover:bg-[#FFF3E0] transition-colors"
+        >
+          + Add Session
         </button>
       </div>
     </div>

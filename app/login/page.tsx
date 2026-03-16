@@ -3,47 +3,84 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { FaUser, FaLock, FaEye, FaEyeSlash, FaFacebook, FaGoogle, FaGlobe } from "react-icons/fa";
+import { handleLogin } from "@/services/login.js"; 
+import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaFacebook, FaGoogle, FaGlobe } from "react-icons/fa";
+
+import GoogleSignInModal from "@/components/auth/GoogleSignInModal";
+import FacebookSignInModal from "@/components/auth/FacebookSignInModal";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState("student");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [showFacebookModal, setShowFacebookModal] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate loading
-    setTimeout(() => {
-      // Redirect based on role
-      if (role === "admin") {
-        window.location.href = "/admin-dashboard";
-      } else if (role === "instructor") {
+
+    try {
+      const data = await handleLogin(email, password, role);
+
+      // ✅ حفظ التوكن
+      localStorage.setItem("token", data.token);
+
+      // ✅ الباك بيرجع data.admin للأدمن و data.user للباقي
+      const userData = data.user || data.admin || { name: data.name, email: data.email, role: data.role };
+      localStorage.setItem("user", JSON.stringify(userData));
+
+      const userRole = userData.role || data.role;
+      if (userRole === "instructor") {
         window.location.href = "/instructor-home";
+      } else if (userRole === "admin") {
+        window.location.href = "/admin-dashboard";
       } else {
         window.location.href = "/my-courses";
       }
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Invalid credentials");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = (accountEmail: string) => {
+    setIsLoading(true);
+    console.log("Signing in with Google account:", accountEmail);
+    setTimeout(() => {
+      if (role === "admin") window.location.href = "/admin-dashboard";
+      else if (role === "instructor") window.location.href = "/instructor-home";
+      else window.location.href = "/my-courses";
+    }, 800);
+  };
+
+  const handleFacebookSignIn = (accountName: string) => {
+    setIsLoading(true);
+    console.log("Signing in with Facebook account:", accountName);
+    setTimeout(() => {
+      if (role === "admin") window.location.href = "/admin-dashboard";
+      else if (role === "instructor") window.location.href = "/instructor-home";
+      else window.location.href = "/my-courses";
     }, 800);
   };
 
   return (
-    <div 
-      className="min-h-screen flex items-center justify-center p-5 overflow-hidden" 
+    <div
+      className="min-h-screen flex items-center justify-center p-5 overflow-hidden"
       style={{ background: "radial-gradient(circle at top, #ffbe8a, #ff9e45, #ffa85b)" }}
     >
-      {/* Animated Background Shapes */}
       <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-pulse" />
       <div className="absolute bottom-20 right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl animate-pulse" style={{ animationDelay: "1s" }} />
       <div className="absolute top-1/2 left-1/4 w-24 h-24 bg-orange-300/20 rounded-full blur-xl animate-float" />
-      
+
       <div className="w-full max-w-[1100px] animate-fadeIn">
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row transform hover:shadow-[0_25px_60px_rgba(0,0,0,0.15)] transition-shadow duration-500">
+          
           {/* Left Side - Form */}
           <div className="flex-1 px-8 md:px-12 py-10 relative flex flex-col justify-center items-center min-h-[550px]">
-            {/* Sign Up Button - Top Right */}
             <Link
               href="/signup"
               className="absolute top-6 right-6 px-6 py-2 rounded-full border-2 border-[#ff9c30] text-[#ff9c30] text-sm font-semibold hover:bg-gradient-to-r hover:from-[#ff9c30] hover:to-[#ffb347] hover:text-white hover:border-transparent hover:scale-105 hover:shadow-lg transition-all duration-300 animate-slideDown"
@@ -52,31 +89,28 @@ export default function LoginPage() {
             </Link>
 
             <div className="w-full max-w-md mt-8">
-              {/* Header */}
               <div className="text-center mb-8 animate-slideDown" style={{ animationDelay: "0.1s" }}>
                 <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back!</h2>
-                <p className="text-gray-500 text-sm font-medium">
-                  Login or sign up to the best courses
-                </p>
+                <p className="text-gray-500 text-sm font-medium">Login or sign up to the best courses</p>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Username Input */}
+                {/* Email */}
                 <div className="relative animate-slideUp" style={{ animationDelay: "0.15s" }}>
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                    <FaUser />
+                    <FaEnvelope />
                   </div>
                   <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-11 pr-4 py-3.5 rounded-full border-2 border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-orange-400 focus:bg-white focus:shadow-md transition-all duration-300"
-                    placeholder="Username"
+                    placeholder="Email"
                     required
                   />
                 </div>
 
-                {/* Password Input */}
+                {/* Password */}
                 <div className="relative animate-slideUp" style={{ animationDelay: "0.2s" }}>
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
                     <FaLock />
@@ -109,15 +143,13 @@ export default function LoginPage() {
                     <option value="instructor">👨‍🏫 Instructor</option>
                     <option value="admin">👨‍💼 Admin</option>
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                    ▼
-                  </div>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
                 </div>
 
                 {/* Forgot Password */}
                 <div className="text-right animate-slideUp" style={{ animationDelay: "0.3s" }}>
-                  <Link 
-                    href="/forgot-password" 
+                  <Link
+                    href="/forgot-password"
                     className="text-xs text-gray-500 hover:text-orange-500 transition-colors underline underline-offset-2"
                   >
                     Forgot your password?
@@ -154,13 +186,18 @@ export default function LoginPage() {
                   <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                 </div>
 
-                {/* Social Buttons */}
                 <div className="flex justify-center gap-4 animate-slideUp" style={{ animationDelay: "0.45s" }}>
-                  <button className="flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-gray-200 bg-white text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:shadow-md hover:scale-105 transition-all duration-300 group">
+                  <button
+                    onClick={() => setShowFacebookModal(true)}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-gray-200 bg-white text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:shadow-md hover:scale-105 transition-all duration-300 group"
+                  >
                     <FaFacebook className="text-blue-600 group-hover:scale-110 transition-transform" />
                     Facebook
                   </button>
-                  <button className="flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-gray-200 bg-white text-sm text-gray-600 hover:border-red-400 hover:text-red-500 hover:shadow-md hover:scale-105 transition-all duration-300 group">
+                  <button
+                    onClick={() => setShowGoogleModal(true)}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-gray-200 bg-white text-sm text-gray-600 hover:border-red-400 hover:text-red-500 hover:shadow-md hover:scale-105 transition-all duration-300 group"
+                  >
                     <FaGoogle className="text-red-500 group-hover:scale-110 transition-transform" />
                     Google
                   </button>
@@ -168,7 +205,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Language Selector */}
             <div className="absolute bottom-5 left-5 flex items-center gap-2 text-sm text-gray-500 hover:text-orange-500 cursor-pointer transition-colors animate-fadeIn" style={{ animationDelay: "0.5s" }}>
               <FaGlobe />
               <span>EN</span>
@@ -185,10 +221,7 @@ export default function LoginPage() {
               style={{ filter: "brightness(0.7)" }}
               priority
             />
-            {/* Overlay Gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-            
-            {/* Floating Text on Image */}
             <div className="absolute bottom-10 left-8 right-8 text-white animate-slideUp" style={{ animationDelay: "0.6s" }}>
               <h3 className="text-2xl font-bold mb-2">Start Your Learning Journey</h3>
               <p className="text-sm opacity-90">Join thousands of students achieving their goals with LARA</p>
@@ -196,6 +229,18 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      <GoogleSignInModal
+        isOpen={showGoogleModal}
+        onClose={() => setShowGoogleModal(false)}
+        onContinue={handleGoogleSignIn}
+      />
+
+      <FacebookSignInModal
+        isOpen={showFacebookModal}
+        onClose={() => setShowFacebookModal(false)}
+        onContinue={handleFacebookSignIn}
+      />
     </div>
   );
 }

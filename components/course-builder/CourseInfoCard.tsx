@@ -29,10 +29,9 @@ const CourseInfoCard: React.FC<CourseInfoCardProps> = ({ title, description, ima
         </div>
         <div className="relative w-64 h-40 flex-shrink-0 rounded-lg overflow-hidden group">
           <Image
-            src="/images/my-courses/Rectangle%204403.png"
+            src={imageUrl || "/images/my-courses/Rectangle%204403.png"}
             alt="Course preview"
-            fill
-            className="object-cover group-hover:scale-110 transition-transform duration-300"
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
           />
           <div className="absolute top-2 right-2 bg-[#00D9A5] text-white px-3 py-1 rounded-lg font-bold text-sm">
             $936

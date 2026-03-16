@@ -1,42 +1,90 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   AdminNavbar,
   UserFilters,
   UserTable,
   Pagination,
 } from "@/components/admin-dashboard";
-import { usersData } from "@/data/adminUsers";
+import api from "@/services/api";
+
+interface AdminUser {
+  _id: string;
+  id?: string;
+  name: string;
+  email: string;
+  role: string;
+  status?: string;
+}
 
 const USERS_PER_PAGE = 7;
 
 export default function AdminUsersPage() {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Filter users
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const [studentsRes, instructorsRes] = await Promise.all([
+          api.get("/admin/students"),
+          api.get("/admin/instructors"),
+        ]);
+        const students = (studentsRes.data || []).map((u: any) => ({ ...u, role: "student", status: "Active" }));
+        const instructors = (instructorsRes.data || []).map((u: any) => ({ ...u, role: "instructor", status: "Active" }));
+        setUsers([...students, ...instructors]);
+      } catch (err) {
+        console.error("Users error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
+
   const filteredUsers = useMemo(() => {
-    return usersData.filter((user) => {
+    return users.filter(user => {
       const matchesSearch =
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase());
+        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus =
-        statusFilter === "all" || user.status.toLowerCase() === statusFilter.toLowerCase();
+        statusFilter === "all" || user.status?.toLowerCase() === statusFilter.toLowerCase();
       return matchesSearch && matchesStatus;
     });
-  }, [searchTerm, statusFilter]);
+  }, [users, searchTerm, statusFilter]);
 
-  // Paginate users
   const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE);
   const paginatedUsers = useMemo(() => {
     const start = (currentPage - 1) * USERS_PER_PAGE;
     return filteredUsers.slice(start, start + USERS_PER_PAGE);
   }, [filteredUsers, currentPage]);
 
-  // Handlers
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure?")) return;
+    try {
+      const user = users.find(u => u._id === id);
+      if (user?.role === "student") await api.delete(`/admin/student/${id}`);
+      else await api.delete(`/admin/instructor/${id}`);
+      setUsers(prev => prev.filter(u => u._id !== id));
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
+
+  const handleSelectUser = (id: string) => {
+    setSelectedUsers(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
+  };
+
+  const handleSelectAll = () => {
+    const ids = paginatedUsers.map(u => u._id);
+    setSelectedUsers(prev => prev.length === ids.length ? [] : ids);
+  };
+
   const handleReset = () => {
     setSearchTerm("");
     setStatusFilter("all");
@@ -44,56 +92,10 @@ export default function AdminUsersPage() {
     setSelectedUsers([]);
   };
 
-  const handleSelectUser = (id: number) => {
-    setSelectedUsers((prev) =>
-      prev.includes(id) ? prev.filter((uid) => uid !== id) : [...prev, id]
-    );
-  };
-
-  const handleSelectAll = () => {
-    if (selectedUsers.length === paginatedUsers.length) {
-      setSelectedUsers([]);
-    } else {
-      setSelectedUsers(paginatedUsers.map((u) => u.id));
-    }
-  };
-
-  const handleEdit = (id: number) => {
-    console.log("Edit user:", id);
-    // Add edit logic
-  };
-
-  const handleDelete = (id: number) => {
-    console.log("Delete user:", id);
-    // Add delete logic
-  };
-
-  const handleCreateUser = () => {
-    console.log("Create new user");
-    // Add create user logic
-  };
-
   return (
-    <div 
-      className="min-h-screen"
-      style={{ background: "linear-gradient(to bottom, #FFD4A8, #FFECD9)" }}
-    >
-      {/* Navigation */}
+    <div className="min-h-screen" style={{ background: "linear-gradient(to bottom, #FFD4A8, #FFECD9)" }}>
       <AdminNavbar activeTab="user-management" />
-
-      {/* Main Content */}
-      <main className="px-8 py-6 max-w-6xl mx-auto">
-        {/* Header with Create Button */}
-        <div className="flex justify-end mb-6">
-          <button
-            onClick={handleCreateUser}
-            className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg font-medium hover:from-orange-600 hover:to-amber-600 transition-all duration-300 shadow-md hover:shadow-lg"
-          >
-            + Create New User
-          </button>
-        </div>
-
-        {/* Filters */}
+      <main className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
         <UserFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
@@ -102,23 +104,20 @@ export default function AdminUsersPage() {
           onReset={handleReset}
         />
 
-        {/* Users Table */}
-        <UserTable
-          users={paginatedUsers}
-          selectedUsers={selectedUsers}
-          onSelectUser={handleSelectUser}
-          onSelectAll={handleSelectAll}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
+        {loading && <div className="text-center py-16 text-gray-500">Loading users...</div>}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
+        {!loading && (
+          <UserTable
+            users={paginatedUsers.map(u => ({ ...u, id: u._id }))}
+            selectedUsers={selectedUsers}
+            onSelectUser={(id: any) => handleSelectUser(id)}
+            onSelectAll={handleSelectAll}
+            onDelete={(id: any) => handleDelete(id)}
           />
+        )}
+
+        {totalPages > 1 && (
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
         )}
       </main>
     </div>
