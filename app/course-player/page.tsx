@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 
 type YTPlayer = {
   getCurrentTime: () => number;
@@ -54,7 +54,7 @@ const getDriveEmbedUrl = (url: string) => {
   return url;
 };
 
-export default function CoursePlayerPage() {
+function CoursePlayerContent() {
   const searchParams = useSearchParams();
   const courseId = searchParams.get("courseId");
 
@@ -230,7 +230,6 @@ export default function CoursePlayerPage() {
     if (courseId) localStorage.setItem(`comments_${studentId}_${courseId}`, JSON.stringify(updated));
   };
 
-  // ✅ Save completedLessons + احفظ في الباك
   useEffect(() => {
     if (courseId && completedLoadedRef.current) {
       localStorage.setItem(`completed_${studentId}_${courseId}`, JSON.stringify([...completedLessons]));
@@ -238,15 +237,12 @@ export default function CoursePlayerPage() {
       if (allVideos.length > 0) {
         const pct = Math.round((completedLessons.size / allVideos.length) * 100);
         localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(pct));
-
-        // ✅ احفظ في الباك
         api.post("/students/save-progress", { courseId, progress: pct })
           .catch(err => console.error("Save progress error:", err));
       }
     }
   }, [completedLessons, courseId]);
 
-  // ✅ احفظ الـ partial progress كل 10%
   useEffect(() => {
     if (!courseId || !currentLesson || !course) return;
     const allVideos = (course.materials || []).filter((m: any) => m.type === "video");
@@ -259,7 +255,6 @@ export default function CoursePlayerPage() {
 
     localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(finalPct));
 
-    // ✅ احفظ في الباك كل 10%
     if (finalPct % 10 === 0 && finalPct > 0) {
       api.post("/students/save-progress", { courseId, progress: finalPct })
         .catch(err => console.error("Save progress error:", err));
@@ -540,5 +535,13 @@ export default function CoursePlayerPage() {
         <p className="text-center text-sm text-[#5D4E37]">© 2025 LARA Platform - All Rights Reserved</p>
       </footer>
     </div>
+  );
+}
+
+export default function CoursePlayerPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CoursePlayerContent />
+    </Suspense>
   );
 }
