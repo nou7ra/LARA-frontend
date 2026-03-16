@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/services/api";
 import {
@@ -8,8 +8,6 @@ import {
   CourseHeader,
   CourseBuilderFooter,
 } from "@/components/course-builder";
-
-export const dynamic = "force-dynamic";
 
 interface Lesson {
   id: number;
@@ -19,7 +17,7 @@ interface Lesson {
   pdfUrl: string;
 }
 
-export default function CourseBuilder() {
+function CourseBuilderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -246,5 +244,13 @@ export default function CourseBuilder() {
       </main>
       <CourseBuilderFooter />
     </div>
+  );
+}
+
+export default function CourseBuilder() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CourseBuilderContent />
+    </Suspense>
   );
 }
