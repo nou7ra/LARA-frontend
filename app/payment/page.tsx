@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FaArrowLeft, FaCreditCard, FaLock, FaCheckCircle } from "react-icons/fa";
 
-export default function PaymentPage() {
+function PaymentContent() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const searchParams = useSearchParams();
@@ -13,19 +13,11 @@ export default function PaymentPage() {
   const price = searchParams.get("price");
 
   const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    cardNumber: "",
-    expiry: "",
-    cvv: "",
-    amount: "",
+    fullName: "", email: "", cardNumber: "", expiry: "", cvv: "", amount: "",
   });
 
-  // ✅ خد السعر من الـ URL مباشرة
   useEffect(() => {
-    if (price) {
-      setFormData(prev => ({ ...prev, amount: price }));
-    }
+    if (price) setFormData(prev => ({ ...prev, amount: price }));
   }, [price]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,17 +27,12 @@ export default function PaymentPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setShowSuccessModal(true);
-    }, 1500);
+    setTimeout(() => { setIsProcessing(false); setShowSuccessModal(true); }, 1500);
   };
 
   return (
-    <div
-      className="min-h-screen p-8 flex flex-col"
-      style={{ background: "linear-gradient(to bottom, #FFE5B4, #FFF8E7, #FFFDF5)" }}
-    >
+    <div className="min-h-screen p-8 flex flex-col"
+      style={{ background: "linear-gradient(to bottom, #FFE5B4, #FFF8E7, #FFFDF5)" }}>
       <style jsx global>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeInLeft { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
@@ -73,7 +60,6 @@ export default function PaymentPage() {
         .confetti { position: absolute; width: 10px; height: 10px; animation: confetti 3s linear forwards; }
       `}</style>
 
-      {/* Back Button */}
       <div className="max-w-xl mx-auto w-full mb-6 animate-slideDown">
         <Link href="/my-courses" className="inline-flex items-center gap-2 text-gray-700 hover:text-orange-600 transition-colors group">
           <FaArrowLeft className="group-hover:-translate-x-1 transition-transform" />
@@ -81,7 +67,6 @@ export default function PaymentPage() {
         </Link>
       </div>
 
-      {/* Form */}
       <div className="max-w-xl mx-auto w-full">
         <div className="bg-white/80 backdrop-blur-sm px-8 py-10 rounded-2xl shadow-xl border border-orange-100 animate-fadeInLeft stagger-1">
           <div className="flex items-center justify-center gap-2 mb-2">
@@ -133,11 +118,10 @@ export default function PaymentPage() {
             <div className="animate-fadeInUp stagger-6">
               <label className="block text-sm font-semibold mb-2 text-gray-700">
                 Amount: {formData.amount && Number(formData.amount) > 0 && (
-  <span className="text-orange-500 font-bold">{formData.amount} EGP</span>
-)}
+                  <span className="text-orange-500 font-bold">{formData.amount} EGP</span>
+                )}
               </label>
-              <input type="number" name="amount" value={formData.amount}
-                step="0.01"
+              <input type="number" name="amount" value={formData.amount} step="0.01"
                 className="w-full rounded-xl border-2 border-gray-300 outline-none px-4 py-3 text-sm bg-gray-50 transition-all duration-300"
                 placeholder="0 EGP" readOnly />
             </div>
@@ -166,7 +150,6 @@ export default function PaymentPage() {
         </div>
       </div>
 
-      {/* Success Modal */}
       {showSuccessModal && (
         <>
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setShowSuccessModal(false)} />
@@ -181,7 +164,6 @@ export default function PaymentPage() {
               }} />
             ))}
           </div>
-
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center animate-scaleIn relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-400" />
@@ -210,5 +192,13 @@ export default function PaymentPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentContent />
+    </Suspense>
   );
 }
