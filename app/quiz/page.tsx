@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "@/services/api";
 
@@ -12,7 +12,7 @@ interface Question {
   correctAnswer: string;
 }
 
-export default function QuizPage() {
+function QuizContent() {
   const searchParams = useSearchParams();
   const courseId = searchParams.get("courseId");
 
@@ -21,7 +21,6 @@ export default function QuizPage() {
   const [error, setError] = useState<string | null>(null);
   const [myCourses, setMyCourses] = useState<any[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
-
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [score, setScore] = useState(0);
@@ -35,10 +34,8 @@ export default function QuizPage() {
           const savedUser = localStorage.getItem("user");
           const userData = savedUser ? JSON.parse(savedUser) : {};
           const studentId = userData._id || userData.id || "guest";
-
           const res = await api.get("/students/courses");
           const allCourses = res.data.courses || [];
-
           const completed = allCourses.filter((c: any) => {
             const pct = localStorage.getItem(`progress_pct_${studentId}_${c._id}`);
             return pct !== null && parseInt(pct) === 100;
@@ -94,23 +91,16 @@ export default function QuizPage() {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = selectedAnswer || "";
     setAnswers(newAnswers);
-
     const isCorrect = selectedAnswer === questions[currentQuestion].correctAnswer;
     const newScore = isCorrect ? score + 1 : score;
     if (isCorrect) setScore(newScore);
-
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
     } else {
-      // ✅ احفظ في الباك
-      api.post(`/students/submit-exam/${courseId}`, {
-        studentAnswers: newAnswers
-      }).catch(err => console.error("Save score error:", err));
-
-      // ✅ احفظ في localStorage عشان الـ Dashboard يعرف
+      api.post(`/students/submit-exam/${courseId}`, { studentAnswers: newAnswers })
+        .catch(err => console.error("Save score error:", err));
       localStorage.setItem(`quiz_done_${courseId}`, String(newScore));
-
       setQuizCompleted(true);
     }
   };
@@ -182,43 +172,30 @@ export default function QuizPage() {
         style={{ background: "linear-gradient(135deg, #FFB88C, #FF9A56)" }}>
         <div className="bg-white/95 rounded-3xl shadow-2xl p-12 max-w-xl w-full text-center">
           <div className="text-7xl mb-6">{passed ? "🎉" : "📚"}</div>
-
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Your Score:{" "}
             <span className={passed ? "text-green-600" : "text-orange-600"}>
               {score} / {questions.length}
             </span>
           </h1>
-
           <p className="text-gray-600 mb-8">
-            {passed
-              ? "Great job! You passed the quiz. Ready for the next challenge! 📚"
+            {passed ? "Great job! You passed the quiz. Ready for the next challenge! 📚"
               : "Don't worry! Review the material and try again."}
           </p>
-
           <div className="w-full bg-gray-200 rounded-full h-3 mb-6 overflow-hidden">
-            <div
-              className={`h-3 rounded-full transition-all duration-1000 ${passed ? "bg-green-500" : "bg-orange-500"}`}
-              style={{ width: `${(score / questions.length) * 100}%` }}
-            />
+            <div className={`h-3 rounded-full transition-all duration-1000 ${passed ? "bg-green-500" : "bg-orange-500"}`}
+              style={{ width: `${(score / questions.length) * 100}%` }} />
           </div>
-          <p className="text-sm text-gray-500 mb-8">
-            {Math.round((score / questions.length) * 100)}% achieved
-          </p>
-
+          <p className="text-sm text-gray-500 mb-8">{Math.round((score / questions.length) * 100)}% achieved</p>
           <div className="flex gap-4 justify-center flex-wrap">
             {!passed && (
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-orange-500 text-white font-bold py-3 px-8 rounded-2xl hover:bg-orange-600 transition"
-              >
+              <button onClick={() => window.location.reload()}
+                className="bg-orange-500 text-white font-bold py-3 px-8 rounded-2xl hover:bg-orange-600 transition">
                 Try Again
               </button>
             )}
-            <Link
-              href="/student-dashboard"
-              className="bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-2xl hover:bg-gray-300 transition"
-            >
+            <Link href="/student-dashboard"
+              className="bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-2xl hover:bg-gray-300 transition">
               Back to Dashboard
             </Link>
           </div>
@@ -233,65 +210,51 @@ export default function QuizPage() {
       <div className="w-full max-w-3xl">
         <div className="flex justify-between items-center mb-6 text-white font-semibold">
           <span className="bg-white/20 px-5 py-2 rounded-full">⏱️ {formatTime(timeLeft)}</span>
-          <span className="bg-white/20 px-5 py-2 rounded-full">
-            {currentQuestion + 1} / {questions.length}
-          </span>
+          <span className="bg-white/20 px-5 py-2 rounded-full">{currentQuestion + 1} / {questions.length}</span>
         </div>
-
         <div className="bg-white/95 rounded-3xl shadow-2xl p-10">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            {questions[currentQuestion].questionText}
-          </h2>
-
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">{questions[currentQuestion].questionText}</h2>
           <div className="w-full bg-gray-200 rounded-full h-3 mb-8 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="bg-gradient-to-r from-orange-400 to-orange-500 h-3 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }} />
           </div>
-
           <div className="space-y-4 mb-8">
             {questions[currentQuestion].options.map((option, index) => (
-              <button
-                key={index}
-                onClick={() => setSelectedAnswer(option)}
+              <button key={index} onClick={() => setSelectedAnswer(option)}
                 className={`w-full p-4 text-left rounded-xl border-2 transition-all duration-300 ${
                   selectedAnswer === option
                     ? "border-orange-500 bg-orange-50 font-semibold shadow-md scale-[1.02]"
                     : "border-gray-300 hover:border-orange-300 hover:bg-gray-50"
-                }`}
-              >
+                }`}>
                 {option}
               </button>
             ))}
           </div>
-
           <div className="flex justify-between gap-4">
-            <button
-              onClick={handlePrevious}
-              disabled={currentQuestion === 0}
+            <button onClick={handlePrevious} disabled={currentQuestion === 0}
               className={`px-8 py-3 rounded-xl font-semibold transition-all ${
-                currentQuestion === 0
-                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-              }`}
-            >
+                currentQuestion === 0 ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+              }`}>
               Previous
             </button>
-            <button
-              onClick={handleNext}
-              disabled={selectedAnswer === null}
+            <button onClick={handleNext} disabled={selectedAnswer === null}
               className={`px-8 py-3 rounded-xl font-semibold transition-all ${
-                selectedAnswer === null
-                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                selectedAnswer === null ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                   : "bg-gradient-to-r from-orange-500 to-orange-400 text-white hover:shadow-xl hover:scale-105"
-              }`}
-            >
+              }`}>
               {currentQuestion === questions.length - 1 ? "Finish" : "Next"}
             </button>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function QuizPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <QuizContent />
+    </Suspense>
   );
 }
