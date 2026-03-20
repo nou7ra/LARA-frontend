@@ -178,9 +178,14 @@ export default function MyCoursesPage() {
         </nav>
 
         <div className="flex items-center gap-3 relative">
-          <div className="cursor-pointer" onClick={() => setShowProfileMenu(!showProfileMenu)}>
-            <Image src="/images/my-courses/Ellipse 68 (1).png" alt="Profile" width={34} height={34} className="rounded-full object-cover" />
+          {/* ✅ Avatar: أول حرف من الاسم */}
+          <div
+            className="cursor-pointer w-[34px] h-[34px] rounded-full bg-[#ff7b2e] flex items-center justify-center text-white font-bold text-sm select-none"
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+          >
+            {studentName.charAt(0).toUpperCase()}
           </div>
+
           <button className="text-xl bg-transparent border-none cursor-pointer">☰</button>
           {showProfileMenu && (
             <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2">
