@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://lara-backend-production.up.railway.app"
+  baseURL: "http://localhost:3000"
 });
 
 // ✅ إضافة التوكن تلقائياً لكل الطلبات

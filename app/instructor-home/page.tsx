@@ -12,10 +12,6 @@ import {
   StudentFeedback,
   InstructorHomeFooter,
 } from "@/components/instructor-home";
-import {
-  recentActivitiesData,
-  testimonialData,
-} from "@/data/instructorHome";
 
 export default function InstructorHome() {
   const [activityFilter, setActivityFilter] = useState("today");
@@ -23,6 +19,8 @@ export default function InstructorHome() {
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [courses, setCourses] = useState<any[]>([]);
   const [coursesError, setCoursesError] = useState<string | null>(null);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState<any[]>([]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
@@ -47,6 +45,33 @@ export default function InstructorHome() {
     };
 
     fetchMyCourses();
+  }, []);
+
+  useEffect(() => {
+    const fetchActivityAndFeedback = async () => {
+      try {
+        const [activityRes, feedbackRes] = await Promise.all([
+          api.get("/instructor/recent-activity"),
+          api.get("/instructor/student-feedback"),
+        ]);
+        setActivities(activityRes.data.activities || []);
+
+        // ✅ map البيانات للشكل اللي الـ component بيستناه
+        const mapped = (feedbackRes.data.feedback || []).map((f: any, index: number) => ({
+          id: index,
+          name: f.studentName,
+          course: f.courseName,
+          feedback: f.comment,
+          avatarUrl: f.avatar || "/images/default-avatar.png",
+        }));
+        setFeedback(mapped);
+
+      } catch (error) {
+        console.error("Error fetching activity/feedback:", error);
+      }
+    };
+
+    fetchActivityAndFeedback();
   }, []);
 
   return (
@@ -88,7 +113,7 @@ export default function InstructorHome() {
                   title={course.title}
                   imageUrl={course.image || "/images/default-course.jpg"}
                   level={course.level}
-                  reviews={course.reviews || []} 
+                  reviews={course.reviews || []}
                   delay={0.1 * index}
                 />
               ))}
@@ -98,12 +123,21 @@ export default function InstructorHome() {
       </section>
 
       <RecentActivity
-        activities={recentActivitiesData}
+        activities={activities}
         filter={activityFilter}
         onFilterChange={setActivityFilter}
       />
 
-      <StudentFeedback testimonials={testimonialData} />
+      {feedback.length === 0 ? (
+        <section className="py-12 px-8 bg-gradient-to-b from-transparent to-orange-50/50">
+          <div className="max-w-7xl mx-auto text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Student Feedback</h2>
+            <p className="text-gray-400">No feedback yet. Feedback will appear here once students leave reviews.</p>
+          </div>
+        </section>
+      ) : (
+        <StudentFeedback testimonials={feedback} />
+      )}
 
       <Link href="/chatbot" className="fixed right-10 bottom-10 z-30 group">
         <Image

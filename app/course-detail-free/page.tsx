@@ -34,12 +34,16 @@ function StartCourseButton({ courseId }: { courseId: string }) {
   const handleStart = async () => {
     setLoading(true);
     try {
-      const res = await api.post("/students/enroll", { courseId });
-      console.log(res.data.message);
+      const isMongoId = /^[a-f\d]{24}$/i.test(courseId);
+      if (isMongoId) {
+        const res = await api.post("/students/enroll", { courseId });
+        console.log(res.data.message);
+      }
+      router.push(`/course-player?courseId=${courseId}`);
     } catch (err) {
       console.error("Enroll error:", err);
-    } finally {
       router.push(`/course-player?courseId=${courseId}`);
+    } finally {
       setLoading(false);
     }
   };
@@ -64,8 +68,57 @@ function CourseDetailFreeContent() {
   const [showAllContent, setShowAllContent] = useState(false);
 
   useEffect(() => {
-    if (!courseId) { setLoading(false); return; }
-    const fetchCourse = async () => {
+    const stored = localStorage.getItem("selectedCourse");
+
+    const loadCourse = async () => {
+      if (stored) {
+        const rec = JSON.parse(stored);
+
+        const aiCourse: Course = {
+          _id: String(rec.course_id),
+          title: rec.subcategory
+            ? rec.subcategory.charAt(0).toUpperCase() + rec.subcategory.slice(1)
+            : "Course",
+          description: `A ${rec.level} level course in ${rec.category}. Duration: ${rec.duration_display ?? rec.duration_h + "h"}.`,
+          level: rec.level,
+          duration: rec.duration_display ?? `${rec.duration_h}h`, // ✅ من DB
+          rating: rec.avg_rating,
+          price: rec.price_usd,
+        };
+
+        try {
+          const res = await api.get("/students/courses");
+          const courses = res.data.courses || [];
+          const dbCourse = courses.find((c: any) =>
+            c.subcategory?.toLowerCase() === rec.subcategory?.toLowerCase() ||
+            c.title?.toLowerCase().includes(rec.subcategory?.toLowerCase()) ||
+            rec.subcategory?.toLowerCase().includes(c.title?.toLowerCase())
+          );
+
+          if (dbCourse) {
+            setCourse({
+              ...aiCourse,
+              _id: dbCourse._id,
+              materials: dbCourse.materials,
+              image: dbCourse.image,
+              instructor: dbCourse.instructor,
+              description: dbCourse.description || aiCourse.description, // ✅ من DB
+              duration: dbCourse.duration || aiCourse.duration,           // ✅ من DB
+              rating: dbCourse.rating && dbCourse.rating > 0 ? dbCourse.rating : undefined, // ✅ لو مفيش rating             // ✅ من DB
+            });
+          } else {
+            setCourse(aiCourse);
+          }
+        } catch {
+          setCourse(aiCourse);
+        }
+
+        setLoading(false);
+        return;
+      }
+
+      if (!courseId) { setLoading(false); return; }
+
       try {
         const res = await api.get("/students/courses");
         const found = (res.data.courses || []).find((c: Course) => c._id === courseId);
@@ -76,7 +129,8 @@ function CourseDetailFreeContent() {
         setLoading(false);
       }
     };
-    fetchCourse();
+
+    loadCourse();
   }, [courseId]);
 
   const videos = (course?.materials || []).filter(m => m.type === "video");

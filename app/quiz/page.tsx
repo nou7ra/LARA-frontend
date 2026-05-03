@@ -26,6 +26,8 @@ function QuizContent() {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(900);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [studentId, setStudentId] = useState("");
+  const [completedScore, setCompletedScore] = useState(0);
 
   useEffect(() => {
     if (!courseId) {
@@ -50,6 +52,13 @@ function QuizContent() {
       fetchMyCourses();
     }
   }, [courseId]);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    const userData = savedUser ? JSON.parse(savedUser) : {};
+    const id = userData._id || userData.id || "guest";
+    setStudentId(id);
+  }, []);
 
   useEffect(() => {
     if (!courseId) return;
@@ -87,20 +96,19 @@ function QuizContent() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = selectedAnswer || "";
-    setAnswers(newAnswers);
     const isCorrect = selectedAnswer === questions[currentQuestion].correctAnswer;
     const newScore = isCorrect ? score + 1 : score;
     if (isCorrect) setScore(newScore);
+
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
     } else {
-      api.post(`/students/submit-exam/${courseId}`, { studentAnswers: newAnswers })
-        .catch(err => console.error("Save score error:", err));
-      localStorage.setItem(`quiz_done_${courseId}`, String(newScore));
+      await api.post(`/students/submit-exam/${courseId}`, { studentAnswers: newAnswers });
+      localStorage.setItem(`quiz_done_${studentId}_${courseId}`, String(newScore));
       setQuizCompleted(true);
     }
   };
@@ -162,9 +170,11 @@ function QuizContent() {
   }
 
   const progress = ((currentQuestion + 1) / questions.length) * 100;
-  const passPercentage = 60;
-  const requiredScore = Math.ceil((passPercentage / 100) * questions.length);
-  const passed = score >= requiredScore;
+  const scorePercentage = (score / questions.length) * 100;
+  const passed = scorePercentage >= 60;
+  const newLevel = scorePercentage >= 80 ? "Advanced"
+    : scorePercentage >= 60 ? "Intermediate"
+    : "Beginner";
 
   if (quizCompleted) {
     return (
@@ -179,25 +189,95 @@ function QuizContent() {
             </span>
           </h1>
           <p className="text-gray-600 mb-8">
-            {passed ? "Great job! You passed the quiz. Ready for the next challenge! 📚"
+            {passed ? "Great job! You passed the quiz. Ready for the next challenge!"
               : "Don't worry! Review the material and try again."}
           </p>
           <div className="w-full bg-gray-200 rounded-full h-3 mb-6 overflow-hidden">
             <div className={`h-3 rounded-full transition-all duration-1000 ${passed ? "bg-green-500" : "bg-orange-500"}`}
-              style={{ width: `${(score / questions.length) * 100}%` }} />
+              style={{ width: `${scorePercentage}%` }} />
           </div>
-          <p className="text-sm text-gray-500 mb-8">{Math.round((score / questions.length) * 100)}% achieved</p>
-          <div className="flex gap-4 justify-center flex-wrap">
-            {!passed && (
-              <button onClick={() => window.location.reload()}
-                className="bg-orange-500 text-white font-bold py-3 px-8 rounded-2xl hover:bg-orange-600 transition">
-                Try Again
+          <p className="text-sm text-gray-500 mb-8">{Math.round(scorePercentage)}% achieved</p>
+
+          {passed && (
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-3 mb-6">
+              <p className="text-green-700 text-sm font-semibold">
+                🎯 New Level: <strong>{newLevel}</strong>
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {passed ? (
+              <button
+                onClick={async () => {
+                  try {
+                    const profileRes = await api.get("/students/my-profile");
+                    const profile = profileRes.data.data;
+
+                    const courseRes = await api.get("/students/courses");
+                    const allCourses = courseRes.data.courses || [];
+                    const currentCourse = allCourses.find((c: any) => c._id === courseId);
+
+                    // ✅ الـ level بحرف كبير
+                    const courseLevel = currentCourse?.level
+                      ? currentCourse.level.charAt(0).toUpperCase() + currentCourse.level.slice(1).toLowerCase()
+                      : "Beginner";
+
+                    // ✅ الـ category من الكورس مش من الـ profile
+                    const courseCategory = currentCourse?.category || profile.interests?.[0] || "";
+                    const courseSubcategory = currentCourse?.subcategory || "";
+
+                    console.log("sending to API:", {
+                      current_level: newLevel,
+                      current_category: courseCategory,
+                      current_subcategory: courseSubcategory,
+                      exam_score: Math.round(scorePercentage),
+                    });
+
+                    const recResponse = await api.post("/api/recommendations/recommend", {
+                      interests: profile.interests || [],
+                      skills: profile.skills || [],
+                      previous_courses: profile.history || [],
+                      current_level: newLevel,
+                      exam_score: Math.round(scorePercentage),
+                      full_name: profile.fullName || "",
+                      top_k: 6,
+                      current_category: courseCategory,
+                      current_subcategory: courseSubcategory,
+                    });
+
+                    const allRecs = recResponse.data.recommendations || [];
+                    const filtered = allRecs.filter((rec: any) =>
+                      rec._id !== courseId && rec.id !== courseId
+                    );
+                    
+                    window.location.href = `/courses-list?level=${newLevel}&score=${Math.round(scorePercentage)}`;
+                  } catch (err) {
+                    console.error(err);
+                    window.location.href = `/courses-list?level=${newLevel}&score=${Math.round(scorePercentage)}`;
+                  }
+                }}
+                className="w-full bg-orange-500 text-white font-bold py-4 px-8 rounded-2xl hover:bg-orange-600 transition shadow-lg text-lg">
+                🚀 View Recommended Courses
               </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    const key = `quiz_done_${studentId}_${courseId}`;
+                    localStorage.removeItem(key);
+                    setQuizCompleted(false);
+                    setScore(0);
+                  }}
+                  className="w-full bg-blue-500 text-white font-bold py-3 px-6 rounded-xl hover:bg-blue-600 transition">
+                  🔄 Retake Quiz
+                </button>
+                <Link href={`/course-player?courseId=${courseId}`}
+                  className="block w-full bg-orange-500 text-white font-bold py-4 px-8 rounded-2xl hover:bg-orange-600 transition shadow-lg text-center text-lg">
+                  Repeat Course
+                </Link>
+              </>
             )}
-            <Link href="/student-dashboard"
-              className="bg-gray-200 text-gray-800 font-bold py-3 px-8 rounded-2xl hover:bg-gray-300 transition">
-              Back to Dashboard
-            </Link>
           </div>
         </div>
       </div>
@@ -233,7 +313,8 @@ function QuizContent() {
           <div className="flex justify-between gap-4">
             <button onClick={handlePrevious} disabled={currentQuestion === 0}
               className={`px-8 py-3 rounded-xl font-semibold transition-all ${
-                currentQuestion === 0 ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+                currentQuestion === 0 ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
               }`}>
               Previous
             </button>

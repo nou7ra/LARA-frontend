@@ -17,6 +17,20 @@ interface Lesson {
   pdfUrl: string;
 }
 
+// ✅ مضاف: الـ categories من الداتاسيت
+const categoriesData: Record<string, string[]> = {
+  design: ["interior design", "ux/ui", "3d design", "graphic design"],
+  psychology: ["social psychology", "developmental", "cognitive", "clinical"],
+  programming: ["game development", "web development", "mobile development", "data science"],
+  history: ["ancient", "modern", "art history", "world history"],
+  languages: ["chinese", "english", "spanish", "korean", "german"],
+  "health & fitness": ["wellness", "exercise", "nutrition", "yoga"],
+  business: ["finance", "project management", "entrepreneurship", "leadership"],
+  marketing: ["digital marketing", "content marketing", "seo", "social media"],
+  art: ["painting", "photography", "drawing", "sculpture"],
+  music: ["production", "piano", "music theory", "guitar"],
+};
+
 function CourseBuilderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,6 +46,8 @@ function CourseBuilderContent() {
   const [courseImageUrl, setCourseImageUrl] = useState("");
   const [coursePrice, setCoursePrice] = useState("0");
   const [courseDuration, setCourseDuration] = useState("");
+  const [courseCategory, setCourseCategory] = useState(""); // ✅ مضاف
+  const [courseSubcategory, setCourseSubcategory] = useState(""); // ✅ مضاف
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -49,6 +65,8 @@ function CourseBuilderContent() {
             setCourseImageUrl(course.image || "");
             setCoursePrice(String(course.price ?? 0));
             setCourseDuration(course.duration || "");
+            setCourseCategory(course.category || ""); // ✅ مضاف
+            setCourseSubcategory(course.subcategory || ""); // ✅ مضاف
             setLessons(
               (course.materials || [])
                 .filter((m: any) => m.type === "video")
@@ -96,6 +114,8 @@ function CourseBuilderContent() {
         image: courseImageUrl,
         price: Number(coursePrice) || 0,
         duration: courseDuration,
+        category: courseCategory, // ✅ مضاف
+        subcategory: courseSubcategory, // ✅ مضاف
         materials: lessons.flatMap((l) => {
           const items: any[] = [];
           if (l.videoUrl) items.push({ type: "video", url: l.videoUrl, title: l.title });
@@ -183,6 +203,36 @@ function CourseBuilderContent() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400" />
                 </div>
               </div>
+
+              {/* ✅ مضاف: Category و Subcategory */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">📂 Category</label>
+                  <select
+                    value={courseCategory}
+                    onChange={(e) => { setCourseCategory(e.target.value); setCourseSubcategory(""); }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                    <option value="">-- Select Category --</option>
+                    {Object.keys(categoriesData).map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">🏷 Subcategory</label>
+                  <select
+                    value={courseSubcategory}
+                    onChange={(e) => setCourseSubcategory(e.target.value)}
+                    disabled={!courseCategory}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50">
+                    <option value="">-- Select Subcategory --</option>
+                    {(categoriesData[courseCategory] || []).map((sub) => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
             </div>
 
             <div className="mb-4">

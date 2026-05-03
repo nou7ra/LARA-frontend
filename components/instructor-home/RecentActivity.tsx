@@ -5,9 +5,11 @@ import { FaChevronDown } from "react-icons/fa";
 import ActivityItem from "./ActivityItem";
 
 interface Activity {
-  id: number;
-  text: string;
-  type: "completed" | "submitted" | "finished";
+  id?: number;
+  text?: string;
+  message?: string;
+  type: "completed" | "submitted" | "finished" | "enroll" | "complete" | "review";
+  date?: string;
 }
 
 interface RecentActivityProps {
@@ -17,10 +19,42 @@ interface RecentActivityProps {
 }
 
 const RecentActivity: React.FC<RecentActivityProps> = ({ activities, filter, onFilterChange }) => {
+
+  // ✅ فلترة الـ activities حسب الـ filter المختار
+  const filteredActivities = activities.filter((activity) => {
+    if (!activity.date) return true;
+
+    const activityDate = new Date(activity.date);
+    const now = new Date();
+
+    if (filter === "today") {
+      return (
+        activityDate.getFullYear() === now.getFullYear() &&
+        activityDate.getMonth() === now.getMonth() &&
+        activityDate.getDate() === now.getDate()
+      );
+    }
+
+    if (filter === "week") {
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      return activityDate >= startOfWeek;
+    }
+
+    if (filter === "month") {
+      return (
+        activityDate.getFullYear() === now.getFullYear() &&
+        activityDate.getMonth() === now.getMonth()
+      );
+    }
+
+    return true;
+  });
+
   return (
     <section className="py-12 px-8">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900 animate-fadeIn">Recent Activity</h2>
           <div className="relative">
@@ -37,13 +71,15 @@ const RecentActivity: React.FC<RecentActivityProps> = ({ activities, filter, onF
           </div>
         </div>
 
-        {/* Activity List */}
         <div className="space-y-4">
-          {activities.map((activity, index) => (
+          {filteredActivities.length === 0 && (
+            <p className="text-center text-gray-400 py-6">No activity in this period.</p>
+          )}
+          {filteredActivities.map((activity, index) => (
             <ActivityItem
-              key={activity.id}
-              id={activity.id}
-              text={activity.text}
+              key={activity.id ?? index}
+              id={activity.id ?? index}
+              text={activity.text ?? activity.message ?? ""}
               type={activity.type}
               delay={0.1 * index}
             />

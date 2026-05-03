@@ -65,6 +65,7 @@ function CoursePlayerContent() {
   const studentName = userObj.name || "You";
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [commentText, setCommentText] = useState("");
   const [course, setCourse] = useState<Course | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
@@ -83,6 +84,22 @@ function CoursePlayerContent() {
   const completedLoadedRef = useRef(false);
 
   useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get("/students/my-profile");
+        if (res.data.data?.avatar) setAvatarUrl(res.data.data.avatar);
+      } catch {
+        const savedUser = localStorage.getItem("user");
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          if (user.avatar) setAvatarUrl(user.avatar);
+        }
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  useEffect(() => {
     if (courseId) {
       const saved = localStorage.getItem(`completed_${studentId}_${courseId}`);
       if (saved) setCompletedLessons(new Set(JSON.parse(saved)));
@@ -91,9 +108,7 @@ function CoursePlayerContent() {
   }, [courseId]);
 
   useEffect(() => {
-    if (!courseId) {
-      window.location.href = "/courses-list";
-    }
+    if (!courseId) window.location.href = "/courses-list";
   }, [courseId]);
 
   useEffect(() => {
@@ -107,12 +122,35 @@ function CoursePlayerContent() {
     const fetchCourse = async () => {
       try {
         const res = await api.get("/students/courses");
-        const found = (res.data.courses || []).find((c: Course) => c._id === courseId);
-        if (found) {
-          setCourse(found);
-          const firstVideo = found.materials?.find((m: Lesson) => m.type === "video");
-          if (firstVideo) setCurrentLesson(firstVideo);
-          else if (found.materials?.length > 0) setCurrentLesson(found.materials[0]);
+        const courses = res.data.courses || [];
+
+        // لو courseId من MongoDB جيب مباشرة
+        const isMongoId = /^[a-f\d]{24}$/i.test(courseId || "");
+        if (isMongoId) {
+          const found = courses.find((c: Course) => c._id === courseId);
+          if (found) {
+            setCourse(found);
+            const firstVideo = found.materials?.find((m: Lesson) => m.type === "video");
+            if (firstVideo) setCurrentLesson(firstVideo);
+            else if (found.materials?.length > 0) setCurrentLesson(found.materials[0]);
+          }
+          return;
+        }
+
+        // لو AI course جيب من localStorage
+        const stored = localStorage.getItem("selectedCourse");
+        if (stored) {
+          const rec = JSON.parse(stored);
+          const dbCourse = courses.find((c: Course) =>
+            c.title?.toLowerCase().includes(rec.subcategory?.toLowerCase()) ||
+            rec.subcategory?.toLowerCase().includes(c.title?.toLowerCase())
+          );
+          if (dbCourse) {
+            setCourse(dbCourse);
+            const firstVideo = dbCourse.materials?.find((m: Lesson) => m.type === "video");
+            if (firstVideo) setCurrentLesson(firstVideo);
+            else if (dbCourse.materials?.length > 0) setCurrentLesson(dbCourse.materials[0]);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -143,9 +181,7 @@ function CoursePlayerContent() {
           onStateChange: (event: any) => {
             if (event.data === 0) {
               setVideoProgress(100);
-              if (currentLessonIdRef.current) {
-                setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
-              }
+              if (currentLessonIdRef.current) setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
             }
             if (event.data === 1) {
               if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
@@ -157,15 +193,11 @@ function CoursePlayerContent() {
                   const duration = player.getDuration?.() || 1;
                   const pct = Math.round((current / duration) * 100);
                   setVideoProgress(pct);
-                  if (pct >= 95 && currentLessonIdRef.current) {
-                    setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
-                  }
+                  if (pct >= 95 && currentLessonIdRef.current) setCompletedLessons(prev => new Set([...prev, currentLessonIdRef.current]));
                 } catch {}
               }, 1000);
             }
-            if (event.data === 2) {
-              if (ytIntervalRef.current) clearInterval(ytIntervalRef.current);
-            }
+            if (event.data === 2) { if (ytIntervalRef.current) clearInterval(ytIntervalRef.current); }
           },
         },
       });
@@ -237,8 +269,7 @@ function CoursePlayerContent() {
       if (allVideos.length > 0) {
         const pct = Math.round((completedLessons.size / allVideos.length) * 100);
         localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(pct));
-        api.post("/students/save-progress", { courseId, progress: pct })
-          .catch(err => console.error("Save progress error:", err));
+        api.post("/students/save-progress", { courseId, progress: pct }).catch(err => console.error("Save progress error:", err));
       }
     }
   }, [completedLessons, courseId]);
@@ -247,17 +278,13 @@ function CoursePlayerContent() {
     if (!courseId || !currentLesson || !course) return;
     const allVideos = (course.materials || []).filter((m: any) => m.type === "video");
     if (allVideos.length === 0) return;
-
     const completedFull = completedLessons.size;
     const partialFromCurrent = completedLessons.has(currentLesson._id) ? 0 : videoProgress / 100;
     const totalPct = Math.round(((completedFull + partialFromCurrent) / allVideos.length) * 100);
     const finalPct = Math.min(totalPct, 100);
-
     localStorage.setItem(`progress_pct_${studentId}_${courseId}`, String(finalPct));
-
     if (finalPct % 10 === 0 && finalPct > 0) {
-      api.post("/students/save-progress", { courseId, progress: finalPct })
-        .catch(err => console.error("Save progress error:", err));
+      api.post("/students/save-progress", { courseId, progress: finalPct }).catch(err => console.error("Save progress error:", err));
     }
   }, [videoProgress, courseId, currentLesson, completedLessons, course]);
 
@@ -328,16 +355,23 @@ function CoursePlayerContent() {
           <Link href="/about" className="text-gray-800 hover:font-semibold">About</Link>
         </nav>
         <div className="relative">
-          <div className="cursor-pointer" onClick={() => setShowProfileMenu(!showProfileMenu)}>
-            <Image src="/images/dashboard/Ellipse%2068.png" alt="Profile" width={40} height={40} className="rounded-full border-2 border-white shadow-md" />
+          <div
+            className="cursor-pointer w-[40px] h-[40px] rounded-full overflow-hidden border-2 border-white shadow-md"
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-white flex items-center justify-center font-bold text-base" style={{ color: "#ff7b2e" }}>
+                {studentName.charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
           {showProfileMenu && (
             <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2 z-50">
               <Link href="/profile" className="block px-4 py-2 text-sm hover:bg-[#ffe6c5]">Profile</Link>
               <Link href="/login" className="block px-4 py-2 text-sm hover:bg-[#ffe6c5]"
-                onClick={() => { localStorage.removeItem("token"); localStorage.removeItem("user"); }}>
-                Logout
-              </Link>
+                onClick={() => { localStorage.removeItem("token"); localStorage.removeItem("user"); }}>Logout</Link>
             </div>
           )}
         </div>
@@ -358,9 +392,7 @@ function CoursePlayerContent() {
               <FaShare /> {copied ? "Copied! ✅" : "Share"}
             </button>
             <button onClick={handleSave}
-              className={`px-5 py-2.5 rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2 ${
-                saved ? "bg-green-500 text-white" : "bg-gradient-to-r from-orange-500 to-orange-400 text-white"
-              }`}>
+              className={`px-5 py-2.5 rounded-full font-semibold hover:scale-105 transition-transform shadow-md flex items-center gap-2 ${saved ? "bg-green-500 text-white" : "bg-gradient-to-r from-orange-500 to-orange-400 text-white"}`}>
               <FaBookmark /> {saved ? "Saved ✅" : "Save"}
             </button>
           </div>
@@ -453,7 +485,6 @@ function CoursePlayerContent() {
                   <span className="text-orange-600">{completedLessons.size}</span>/{videos.length} Done
                 </span>
               </div>
-
               {videos.length === 0 ? (
                 <p className="text-gray-400 text-sm">No video lessons yet.</p>
               ) : (
@@ -463,24 +494,16 @@ function CoursePlayerContent() {
                     const isDone = completedLessons.has(lesson._id);
                     return (
                       <div key={lesson._id} onClick={() => setCurrentLesson(lesson)}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${
-                          isActive ? "bg-orange-50 border-orange-400"
-                          : isDone ? "bg-green-50 border-green-200"
-                          : "bg-white border-gray-200 hover:border-orange-300"
-                        }`}>
+                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${isActive ? "bg-orange-50 border-orange-400" : isDone ? "bg-green-50 border-green-200" : "bg-white border-gray-200 hover:border-orange-300"}`}>
                         <div className="flex items-center gap-3">
-                          {isDone
-                            ? <FaCheckCircle className="text-green-500 text-xl flex-shrink-0" />
-                            : isActive
-                            ? <FaPlayCircle className="text-orange-500 text-xl flex-shrink-0" />
+                          {isDone ? <FaCheckCircle className="text-green-500 text-xl flex-shrink-0" />
+                            : isActive ? <FaPlayCircle className="text-orange-500 text-xl flex-shrink-0" />
                             : <FaLock className="text-gray-400 text-lg flex-shrink-0" />}
                           <p className={`text-sm font-medium flex-1 ${isActive ? "text-orange-700 font-semibold" : "text-gray-700"}`}>
                             {String(index + 1).padStart(2, "0")}. {lesson.title}
                           </p>
                           <button onClick={e => { e.stopPropagation(); toggleComplete(lesson._id); }}
-                            className={`text-xs px-2 py-1 rounded-full border transition-all ${
-                              isDone ? "bg-green-100 border-green-300 text-green-600" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-orange-100"
-                            }`}>
+                            className={`text-xs px-2 py-1 rounded-full border transition-all ${isDone ? "bg-green-100 border-green-300 text-green-600" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-orange-100"}`}>
                             {isDone ? "✓" : "○"}
                           </button>
                         </div>
@@ -489,7 +512,6 @@ function CoursePlayerContent() {
                   })}
                 </div>
               )}
-
               {currentLesson && (
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -503,7 +525,6 @@ function CoursePlayerContent() {
                   {videoProgress >= 95 && <p className="text-green-500 text-xs mt-1 font-semibold">✅ Completed!</p>}
                 </div>
               )}
-
               {videos.length > 0 && (
                 <div className="mt-3">
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -532,7 +553,7 @@ function CoursePlayerContent() {
             ))}
           </div>
         </div>
-        <p className="text-center text-sm text-[#5D4E37]">© 2025 LARA Platform - All Rights Reserved</p>
+        <p className="text-center text-sm text-[#5D4E37]">©️ 2025 LARA Platform - All Rights Reserved</p>
       </footer>
     </div>
   );

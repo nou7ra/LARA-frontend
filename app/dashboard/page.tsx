@@ -96,7 +96,9 @@ export default function Dashboard() {
         // ✅ Success rate لكل كورس
         const coursesWithRate = courseList.map((c: any) => {
           const enrolled = c.enrolledStudents?.length || c.studentsCount || 1;
-          const completed = c.completedStudents?.length || c.completedCount || 0;
+          const completed = (c.enrolledStudents || []).filter(
+  (e: any) => e.progress === 100
+).length;
           const rate = enrolled > 0 ? Math.round((completed / enrolled) * 100) : 0;
           return {
             course: (c.title || 'Course').replace(/\s+/g, '_').substring(0, 15),

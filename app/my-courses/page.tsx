@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FaClock, FaStar, FaTag } from "react-icons/fa";
 import api from "@/services/api";
 
@@ -29,20 +29,44 @@ interface Session {
   price?: number;
 }
 
+interface Instructor {
+  _id: string;
+  name?: string;
+  specialization?: string;
+  avatar?: string;
+  bio?: string;
+}
+
 export default function MyCoursesPage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSessionsMenu, setShowSessionsMenu] = useState(false);
   const [studentName, setStudentName] = useState("Student");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [recommendedCourses, setRecommendedCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [loadingInstructors, setLoadingInstructors] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      if (user.name) setStudentName(user.name);
-    }
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get("/students/my-profile");
+        const data = res.data.data;
+        if (data.name) setStudentName(data.name);
+        if (data.fullName) setStudentName(data.fullName);
+        if (data.avatar) setAvatarUrl(data.avatar);
+      } catch {
+        const savedUser = localStorage.getItem("user");
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          if (user.name) setStudentName(user.name);
+          if (user.avatar) setAvatarUrl(user.avatar);
+        }
+      }
+    };
+    fetchProfile();
   }, []);
 
   useEffect(() => {
@@ -80,10 +104,26 @@ export default function MyCoursesPage() {
     fetchSessions();
   }, []);
 
-  const formatDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split("T")[0].split("-").map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // ✅ التعديل الوحيد - endpoint اتغير
+  useEffect(() => {
+    const fetchInstructors = async () => {
+      try {
+        const res = await api.get("/instructor/all");
+        setInstructors(res.data.instructors || res.data.data || res.data || []);
+      } catch (err) {
+        console.error("Error fetching instructors:", err);
+      } finally {
+        setLoadingInstructors(false);
+      }
+    };
+    fetchInstructors();
+  }, []);
+
+  const scrollLeft = () => {
+    scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" });
+  };
+  const scrollRight = () => {
+    scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" });
   };
 
   return (
@@ -105,7 +145,6 @@ export default function MyCoursesPage() {
           <Link href="/courses" className="text-gray-800 hover:font-semibold">Recommended Courses</Link>
           <Link href="/quiz" className="text-gray-800 hover:font-semibold">Quiz</Link>
 
-          {/* Sessions Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowSessionsMenu(!showSessionsMenu)}
@@ -118,7 +157,6 @@ export default function MyCoursesPage() {
             {showSessionsMenu && (
               <div className="absolute top-[48px] left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-2xl w-[300px] z-50 overflow-hidden"
                 style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
-
                 <div className="px-5 py-3.5 bg-gradient-to-r from-orange-500 to-amber-400 flex items-center gap-2">
                   <span className="text-lg">📅</span>
                   <h4 className="text-white font-bold text-sm tracking-wide">Upcoming Sessions</h4>
@@ -151,12 +189,10 @@ export default function MyCoursesPage() {
                             <p className="text-xs text-orange-400 font-medium truncate">{s.courseTitle}</p>
                             <p className="text-[11px] text-gray-400 mt-0.5">🕐 {s.timeStart} – {s.timeEnd}</p>
                             {s.price !== undefined && s.price > 0 && (
-                              <p className="text-[11px] text-orange-500 font-bold mt-0.5">
-                                {s.price} EGP
-                              </p>
+                              <p className="text-[11px] text-orange-500 font-bold mt-0.5">{s.price} EGP</p>
                             )}
                           </div>
-                          <span className="text-orange-300 group-hover:text-orange-500 group-hover:translate-x-0.5 transition-all text-base">›</span>
+                          <span className="text-orange-300 group-hover:text-orange-500 group-hover:translate-x-0.5 transition-all text-base">→</span>
                         </Link>
                       );
                     })}
@@ -178,15 +214,21 @@ export default function MyCoursesPage() {
         </nav>
 
         <div className="flex items-center gap-3 relative">
-          {/* ✅ Avatar: أول حرف من الاسم */}
           <div
-            className="cursor-pointer w-[34px] h-[34px] rounded-full bg-[#ff7b2e] flex items-center justify-center text-white font-bold text-sm select-none"
+            className="cursor-pointer w-[40px] h-[40px] min-w-[40px] min-h-[40px] rounded-full overflow-hidden shadow-md shrink-0 border-2 border-white"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
           >
-            {studentName.charAt(0).toUpperCase()}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-white flex items-center justify-center font-bold text-base" style={{ color: "#ff7b2e" }}>
+                {studentName.charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
 
-          <button className="text-xl bg-transparent border-none cursor-pointer">☰</button>
+          <button className="text-xl bg-transparent border-none cursor-pointer">⚙</button>
+
           {showProfileMenu && (
             <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2">
               <Link href="/profile" className="block px-4 py-2 text-gray-800 text-sm hover:bg-[#ffe6c5]">Profile</Link>
@@ -221,7 +263,7 @@ export default function MyCoursesPage() {
                 <Image src="/images/my-courses/Frame 1984077640.png" alt="Student" width={310} height={300} className="rounded-full object-cover" />
               </div>
               <div className="absolute -top-4 -right-4 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center text-2xl animate-bounce">❤️</div>
-              <div className="absolute bottom-8 -right-8 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-lg animate-bounce" style={{ animationDelay: "0.5s" }}>⭐</div>
+              <div className="absolute bottom-8 -right-8 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-lg animate-bounce" style={{ animationDelay: "0.5s" }}>⭐️</div>
             </div>
           </div>
         </div>
@@ -268,7 +310,7 @@ export default function MyCoursesPage() {
                       {course.image ? (
                         <img src={course.image} alt={course.title} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-5xl">📚</span>
+                        <span className="text-5xl">📎</span>
                       )}
                     </div>
 
@@ -312,29 +354,59 @@ export default function MyCoursesPage() {
           )}
         </section>
 
-        {/* Best Instructors */}
+        {/* ✅ Best Instructors */}
         <section className="mb-12">
           <h2 className="text-3xl font-bold text-center mb-8 text-[#0b9152]">Our Best Instructors</h2>
-          <div className="flex items-center gap-2.5">
-            <button className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg">‹</button>
-            <div className="flex overflow-x-auto gap-3.5 scroll-smooth p-1">
-              {[
-                { img: "image 13.png", name: "Ibrahim Adel", role: "English" },
-                { img: "88.png", name: "Paul Bullem", role: "Registered Nutritionist" },
-                { img: "'p;.png", name: "Osama Mohammed", role: "Software engineer" },
-                { img: ",m.png", name: "Ehab Fayez", role: "UI/UX Designer" },
-              ].map((inst, idx) => (
-                <article key={idx} className="min-w-[170px] max-w-[170px] bg-white rounded-2xl p-3 text-center shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer">
-                  <div className="overflow-hidden rounded-xl mb-2.5">
-                    <Image src={`/images/my-courses/${inst.img}`} alt={inst.name} width={170} height={170} className="w-full" />
-                  </div>
-                  <h3 className="text-sm font-semibold mb-0.5">{inst.name}</h3>
-                  <p className="text-xs text-gray-600">{inst.role}</p>
-                </article>
-              ))}
+
+          {loadingInstructors && (
+            <div className="text-center text-gray-400 py-8">Loading instructors...</div>
+          )}
+
+          {!loadingInstructors && instructors.length === 0 && (
+            <div className="text-center text-gray-400 py-8">No instructors available yet.</div>
+          )}
+
+          {!loadingInstructors && instructors.length > 0 && (
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={scrollLeft}
+                className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:bg-orange-50 transition-colors flex-shrink-0">
+                ‹
+              </button>
+
+              <div ref={scrollRef} className="flex overflow-x-auto gap-3.5 scroll-smooth p-1"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                {instructors.map((inst) => (
+                  <article key={inst._id}
+                    className="min-w-[170px] max-w-[170px] bg-white rounded-2xl p-3 text-center shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer flex-shrink-0">
+                    <div className="overflow-hidden rounded-xl mb-2.5 h-[160px] bg-gray-100 flex items-center justify-center">
+                      {inst.avatar ? (
+                        <img
+                          src={inst.avatar}
+                          alt={inst.fullName || inst.name || "Instructor"}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-orange-200 to-amber-300 flex items-center justify-center">
+                          <span className="text-4xl font-bold text-white">
+                            {(inst.fullName || inst.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-semibold mb-0.5">{inst.fullName || inst.name}</h3>
+                    <p className="text-xs text-gray-600">{inst.specialization || inst.bio || ""}</p>
+                  </article>
+                ))}
+              </div>
+
+              <button
+                onClick={scrollRight}
+                className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:bg-orange-50 transition-colors flex-shrink-0">
+                ›
+              </button>
             </div>
-            <button className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg">›</button>
-          </div>
+          )}
         </section>
 
         <Link href="/chatbot" className="fixed right-10 bottom-10 z-30">
@@ -382,11 +454,11 @@ export default function MyCoursesPage() {
           </div>
           <div className="rounded-2xl p-5">
             <h4 className="text-[#8B4513] font-bold text-lg mb-4">📞 Contact</h4>
-            <p className="text-sm text-[#5D4E37]">📱 +123 456 789</p>
+            <p className="text-sm text-[#5D4E37]">📫 +123 456 789</p>
             <p className="text-sm text-[#5D4E37]">✉️ info@lara.com</p>
           </div>
         </div>
-        <p className="text-center text-sm text-[#5D4E37]">© 2025 LARA Platform - All Rights Reserved</p>
+        <p className="text-center text-sm text-[#5D4E37]">©️ 2025 LARA Platform - All Rights Reserved</p>
       </footer>
     </div>
   );

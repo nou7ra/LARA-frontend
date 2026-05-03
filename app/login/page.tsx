@@ -3,11 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { handleLogin } from "@/services/login.js"; 
+import { handleLogin } from "@/services/login.js";
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaFacebook, FaGoogle, FaGlobe } from "react-icons/fa";
-
-import GoogleSignInModal from "@/components/auth/GoogleSignInModal";
 import FacebookSignInModal from "@/components/auth/FacebookSignInModal";
+import api from "@/services/api";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -15,31 +14,28 @@ export default function LoginPage() {
   const [role, setRole] = useState("student");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [showFacebookModal, setShowFacebookModal] = useState(false);
 
+  const navigateUser = (userData: any) => {
+    if (userData.role === "instructor") {
+      window.location.href = "/instructor-home";
+    } else if (userData.role === "admin") {
+      window.location.href = "/admin-dashboard";
+    } else {
+      window.location.href = "/my-courses";
+    }
+  };
+
+  // 1. تسجيل الدخول التقليدي
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
     try {
       const data = await handleLogin(email, password, role);
-
-      // ✅ حفظ التوكن
       localStorage.setItem("token", data.token);
-
-      // ✅ الباك بيرجع data.admin للأدمن و data.user للباقي
       const userData = data.user || data.admin || { name: data.name, email: data.email, role: data.role };
       localStorage.setItem("user", JSON.stringify(userData));
-
-      const userRole = userData.role || data.role;
-      if (userRole === "instructor") {
-        window.location.href = "/instructor-home";
-      } else if (userRole === "admin") {
-        window.location.href = "/admin-dashboard";
-      } else {
-        window.location.href = "/my-courses";
-      }
+      navigateUser(userData);
     } catch (error: any) {
       alert(error.response?.data?.message || "Invalid credentials");
     } finally {
@@ -47,24 +43,31 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleSignIn = (accountEmail: string) => {
-    setIsLoading(true);
-    console.log("Signing in with Google account:", accountEmail);
-    setTimeout(() => {
-      if (role === "admin") window.location.href = "/admin-dashboard";
-      else if (role === "instructor") window.location.href = "/instructor-home";
-      else window.location.href = "/my-courses";
-    }, 800);
+  // 2. ✅ Google - redirect مباشرة للـ Passport
+  const handleGoogleSignIn = () => {
+    window.location.href = "http://localhost:3000/auth/google";
   };
 
-  const handleFacebookSignIn = (accountName: string) => {
+  // 3. Facebook
+  const handleFacebookSignIn = async (accountName: string) => {
     setIsLoading(true);
-    console.log("Signing in with Facebook account:", accountName);
-    setTimeout(() => {
-      if (role === "admin") window.location.href = "/admin-dashboard";
-      else if (role === "instructor") window.location.href = "/instructor-home";
-      else window.location.href = "/my-courses";
-    }, 800);
+    try {
+      const response = await api.post("/students/facebook-login", {
+        name: accountName,
+        role: role,
+      });
+      const data = response.data;
+      localStorage.setItem("token", data.token);
+      const userData = data.user || data.admin;
+      localStorage.setItem("user", JSON.stringify(userData));
+      navigateUser(userData);
+    } catch (error: any) {
+      console.error("Facebook login error:", error);
+      alert(error.response?.data?.message || "Facebook Sign-In failed");
+    } finally {
+      setIsLoading(false);
+      setShowFacebookModal(false);
+    }
   };
 
   return (
@@ -78,7 +81,7 @@ export default function LoginPage() {
 
       <div className="w-full max-w-[1100px] animate-fadeIn">
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row transform hover:shadow-[0_25px_60px_rgba(0,0,0,0.15)] transition-shadow duration-500">
-          
+
           {/* Left Side - Form */}
           <div className="flex-1 px-8 md:px-12 py-10 relative flex flex-col justify-center items-center min-h-[550px]">
             <Link
@@ -95,7 +98,6 @@ export default function LoginPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Email */}
                 <div className="relative animate-slideUp" style={{ animationDelay: "0.15s" }}>
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
                     <FaEnvelope />
@@ -110,7 +112,6 @@ export default function LoginPage() {
                   />
                 </div>
 
-                {/* Password */}
                 <div className="relative animate-slideUp" style={{ animationDelay: "0.2s" }}>
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
                     <FaLock />
@@ -132,7 +133,6 @@ export default function LoginPage() {
                   </button>
                 </div>
 
-                {/* Role Select */}
                 <div className="relative animate-slideUp" style={{ animationDelay: "0.25s" }}>
                   <select
                     value={role}
@@ -146,7 +146,6 @@ export default function LoginPage() {
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
                 </div>
 
-                {/* Forgot Password */}
                 <div className="text-right animate-slideUp" style={{ animationDelay: "0.3s" }}>
                   <Link
                     href="/forgot-password"
@@ -156,29 +155,17 @@ export default function LoginPage() {
                   </Link>
                 </div>
 
-                {/* Login Button */}
                 <div className="pt-2 animate-slideUp" style={{ animationDelay: "0.35s" }}>
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full max-w-[220px] mx-auto block py-3.5 bg-gradient-to-r from-[#ff9c30] to-[#ffb347] text-white rounded-full font-semibold text-base hover:from-[#e88b20] hover:to-[#ffa030] hover:scale-105 hover:shadow-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    className="w-full max-w-[220px] mx-auto block py-3.5 bg-gradient-to-r from-[#ff9c30] to-[#ffb347] text-white rounded-full font-semibold text-base hover:from-[#e88b20] hover:to-[#ffa030] hover:scale-105 hover:shadow-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {isLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Logging in...
-                      </span>
-                    ) : (
-                      "Log In"
-                    )}
+                    {isLoading ? "Logging in..." : "Log In"}
                   </button>
                 </div>
               </form>
 
-              {/* Divider */}
               <div className="mt-8 animate-fadeIn" style={{ animationDelay: "0.4s" }}>
                 <div className="flex items-center w-full my-6">
                   <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
@@ -194,8 +181,10 @@ export default function LoginPage() {
                     <FaFacebook className="text-blue-600 group-hover:scale-110 transition-transform" />
                     Facebook
                   </button>
+
+                  {/* ✅ Google - redirect مباشرة بدون modal */}
                   <button
-                    onClick={() => setShowGoogleModal(true)}
+                    onClick={handleGoogleSignIn}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-gray-200 bg-white text-sm text-gray-600 hover:border-red-400 hover:text-red-500 hover:shadow-md hover:scale-105 transition-all duration-300 group"
                   >
                     <FaGoogle className="text-red-500 group-hover:scale-110 transition-transform" />
@@ -229,12 +218,6 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-
-      <GoogleSignInModal
-        isOpen={showGoogleModal}
-        onClose={() => setShowGoogleModal(false)}
-        onContinue={handleGoogleSignIn}
-      />
 
       <FacebookSignInModal
         isOpen={showFacebookModal}

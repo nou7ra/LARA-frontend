@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { FaArrowLeft } from "react-icons/fa";
-import api from "@/services/api"; // ✅ بنستخدم الـ api instance اللي فيها التوكن
+import api from "@/services/api";
 import {
   InstructorProfileNavbar,
   ProfileImage,
@@ -21,13 +21,10 @@ export default function InstructorProfile() {
   const [bio, setBio] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-
-  // ✅ States للـ feedback
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ جلب بيانات المستخدم من localStorage عند فتح الصفحة
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -41,7 +38,6 @@ export default function InstructorProfile() {
     }
   }, []);
 
-  // ✅ حفظ البيانات عن طريق الباك
   const handleSaveChanges = async () => {
     if (!firstName || !lastName || !email) {
       setErrorMsg("Please fill in all required fields.");
@@ -53,8 +49,7 @@ export default function InstructorProfile() {
     setSuccessMsg("");
 
     try {
-      // ✅ بنبعت التعديلات للباك
-      const response = await api.put("/instructor/profile", {
+      await api.put("/instructor/profile", {
         name: `${firstName} ${lastName}`,
         email,
         phone,
@@ -65,7 +60,6 @@ export default function InstructorProfile() {
         }),
       });
 
-      // ✅ لو نجح، نحدث الـ localStorage
       const updatedUser = {
         ...JSON.parse(localStorage.getItem("user") || "{}"),
         name: `${firstName} ${lastName}`,
@@ -78,18 +72,52 @@ export default function InstructorProfile() {
       setSuccessMsg("Profile updated successfully! ✅");
       setCurrentPassword("");
       setNewPassword("");
+
+      setTimeout(() => {
+        window.location.href = "/instructor-home";
+      }, 2000);
+
     } catch (error) {
       console.error("Update profile error:", error);
       setErrorMsg(
-        error.response?.data?.message || "Something went wrong. Please try again."
+        (error as any).response?.data?.message || "Something went wrong. Please try again."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleImageChange = () => {
-    console.log("Change profile image");
+  // ✅ بترفع الصورة للـ backend وتحفظها في الـ database
+  const handleImageChange = async (file: File) => {
+    try {
+      // ✅ احفظي في localStorage عشان تظهر فوراً
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        localStorage.setItem("profileImage", base64);
+        window.dispatchEvent(new Event("profileImageUpdated"));
+      };
+      reader.readAsDataURL(file);
+
+      // ✅ ابعتي الصورة للـ backend
+      const formData = new FormData();
+      formData.append("avatar", file);
+
+      const res = await api.post("/instructor/upload-avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      // ✅ حفظي الـ avatar URL في الـ localStorage
+      const updatedUser = {
+        ...JSON.parse(localStorage.getItem("user") || "{}"),
+        avatar: res.data.avatar,
+      };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+
+      console.log("Avatar uploaded:", res.data.avatar);
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+    }
   };
 
   return (
@@ -107,78 +135,32 @@ export default function InstructorProfile() {
 
         <div className="bg-white/50 backdrop-blur-sm rounded-3xl p-8 shadow-lg">
           <ProfileImage
-            imageUrl="/images/instructor/instructor-01.jpg"
+            name={firstName}
             onImageChange={handleImageChange}
           />
 
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ProfileField
-                label="First Name"
-                value={firstName}
-                onChange={setFirstName}
-                placeholder="Enter first name"
-                delay={0.1}
-              />
-              <ProfileField
-                label="Last Name"
-                value={lastName}
-                onChange={setLastName}
-                placeholder="Enter last name"
-                delay={0.15}
-              />
+              <ProfileField label="First Name" value={firstName} onChange={setFirstName} placeholder="Enter first name" delay={0.1} />
+              <ProfileField label="Last Name" value={lastName} onChange={setLastName} placeholder="Enter last name" delay={0.15} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ProfileField
-                label="Email"
-                value={email}
-                onChange={setEmail}
-                type="email"
-                placeholder="Enter email"
-                delay={0.2}
-              />
-              <ProfileField
-                label="Phone"
-                value={phone}
-                onChange={setPhone}
-                type="tel"
-                placeholder="Enter phone number"
-                delay={0.25}
-              />
+              <ProfileField label="Email" value={email} onChange={setEmail} type="email" placeholder="Enter email" delay={0.2} />
+              <ProfileField label="Phone" value={phone} onChange={setPhone} type="tel" placeholder="Enter phone number" delay={0.25} />
             </div>
 
             <ProfileBio value={bio} onChange={setBio} delay={0.3} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <PasswordField
-                label="Current Password"
-                value={currentPassword}
-                onChange={setCurrentPassword}
-                placeholder="*****"
-                delay={0.35}
-              />
-              <PasswordField
-                label="New Password"
-                value={newPassword}
-                onChange={setNewPassword}
-                placeholder="*****"
-                delay={0.4}
-              />
+              <PasswordField label="Current Password" value={currentPassword} onChange={setCurrentPassword} placeholder="*****" delay={0.35} />
+              <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} placeholder="*****" delay={0.4} />
             </div>
 
-            {/* ✅ رسائل النجاح والخطأ */}
-            {successMsg && (
-              <p className="text-green-600 text-sm font-medium">{successMsg}</p>
-            )}
-            {errorMsg && (
-              <p className="text-red-500 text-sm font-medium">{errorMsg}</p>
-            )}
+            {successMsg && <p className="text-green-600 text-sm font-medium">{successMsg}</p>}
+            {errorMsg && <p className="text-red-500 text-sm font-medium">{errorMsg}</p>}
 
-            <div
-              className="flex justify-end pt-4 animate-slideUp"
-              style={{ animationDelay: "0.45s" }}
-            >
+            <div className="flex justify-end pt-4 animate-slideUp" style={{ animationDelay: "0.45s" }}>
               <button
                 onClick={handleSaveChanges}
                 disabled={loading}

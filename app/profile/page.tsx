@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import api from "@/services/api";
-import { FaUser, FaEnvelope, FaPhone, FaVenusMars, FaEdit, FaSave } from "react-icons/fa";
+import { FaUser, FaEnvelope, FaEdit, FaSave, FaCamera } from "react-icons/fa";
 
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState<string | null>(null);
@@ -12,6 +12,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState<string>("/images/dashboard/Ellipse%2068.png");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [profileData, setProfileData] = useState({
     name: "",
@@ -22,7 +25,6 @@ export default function ProfilePage() {
     skills: [] as string[],
   });
 
-  // ✅ جيب بيانات الطالب من الباك
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -36,12 +38,13 @@ export default function ProfilePage() {
           interests: data.interests || [],
           skills: data.skills || [],
         });
+        if (data.avatar) setAvatarPreview(data.avatar);
       } catch (err) {
-        // fallback من localStorage
         const savedUser = localStorage.getItem("user");
         if (savedUser) {
           const user = JSON.parse(savedUser);
           setProfileData(prev => ({ ...prev, name: user.name || "", email: user.email || "" }));
+          if (user.avatar) setAvatarPreview(user.avatar);
         }
         console.error("Error fetching profile:", err);
       } finally {
@@ -51,30 +54,68 @@ export default function ProfilePage() {
     fetchProfile();
   }, []);
 
-  // ✅ حفظ التعديلات في الباك
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await api.put("/students/update-profile", {
-        name: profileData.name,
-        email: profileData.email,
-        interests: profileData.interests,
-        skills: profileData.skills,
-      });
-
-      // تحديث localStorage
-      const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      localStorage.setItem("user", JSON.stringify({ ...savedUser, name: profileData.name, email: profileData.email }));
-
-      setIsEditing(null);
-      setSuccessMsg("Profile updated successfully! ✅");
-      setTimeout(() => setSuccessMsg(""), 3000);
-    } catch (err) {
-      console.error("Error updating profile:", err);
-    } finally {
-      setSaving(false);
-    }
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+    setAvatarFile(file);
   };
+const handleAvatarUpload = async () => {
+  if (!avatarFile) return;
+  setSaving(true);
+  try {
+    const formData = new FormData();
+    formData.append("name", profileData.name);
+    formData.append("email", profileData.email);
+    profileData.interests.forEach(i => formData.append("interests[]", i));
+    profileData.skills.forEach(s => formData.append("skills[]", s));
+    formData.append("avatar", avatarFile);
+
+    const res = await api.put("/students/update-profile", formData, { // ✅ غيرنا الـ endpoint
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    if (res.data.avatar) setAvatarPreview(res.data.avatar);
+
+    setAvatarFile(null);
+    setSuccessMsg("Profile picture updated! ✅");
+    setTimeout(() => setSuccessMsg(""), 3000);
+  } catch (err) {
+    console.error("Error uploading avatar:", err);
+    setSuccessMsg("Failed to upload image ❌");
+    setTimeout(() => setSuccessMsg(""), 3000);
+  } finally {
+    setSaving(false);
+  }
+};
+ const handleSave = async () => {
+  setSaving(true);
+  try {
+    const formData = new FormData();
+    formData.append("name", profileData.name);
+    formData.append("email", profileData.email);
+    profileData.interests.forEach(i => formData.append("interests[]", i));
+    profileData.skills.forEach(s => formData.append("skills[]", s));
+    if (avatarFile) formData.append("avatar", avatarFile);
+
+    const res = await api.put("/students/update-profile", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    if (res.data.avatar) setAvatarPreview(res.data.avatar);
+
+    setIsEditing(null);
+    setAvatarFile(null);
+    setSuccessMsg("Profile updated successfully! ✅");
+    setTimeout(() => setSuccessMsg(""), 3000);
+  } catch (err) {
+    console.error("Error updating profile:", err);
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (loading) {
     return (
@@ -110,7 +151,7 @@ export default function ProfilePage() {
         </nav>
         <div className="flex items-center gap-4 relative">
           <div className="cursor-pointer" onClick={() => setShowProfileMenu(!showProfileMenu)}>
-            <Image src="/images/dashboard/Ellipse%2068.png" alt="Profile" width={40} height={40} className="rounded-full border-2 border-white shadow-md" />
+            <img src={avatarPreview} alt="Profile" className="rounded-full border-2 border-white shadow-md object-cover w-10 h-10" />
           </div>
           {showProfileMenu && (
             <div className="absolute top-[54px] right-0 bg-white rounded-lg shadow-lg min-w-[130px] py-2 z-50">
@@ -131,13 +172,40 @@ export default function ProfilePage() {
           {/* Avatar */}
           <div className="flex flex-col items-center mb-10">
             <div className="relative animate-pulse-glow">
-              <Image src="/images/dashboard/Ellipse%2068.png" alt="Profile" width={140} height={140} className="rounded-full border-4 border-orange-300" />
-              <button className="absolute bottom-2 right-2 w-12 h-12 bg-gradient-to-r from-orange-400 to-amber-300 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                <FaEdit className="text-white text-lg" />
+              <img
+                src={avatarPreview}
+                alt="Profile"
+                className="w-[140px] h-[140px] rounded-full border-4 border-orange-300 object-cover"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-2 right-2 w-12 h-12 bg-gradient-to-r from-orange-400 to-amber-300 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                title="Change profile picture"
+              >
+                <FaCamera className="text-white text-lg" />
               </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
             </div>
+
             <h2 className="text-2xl font-bold text-gray-800 mt-4">{profileData.name}</h2>
             <p className="text-gray-500">{profileData.email}</p>
+
+            {avatarFile !== null && (
+              <button
+                onClick={handleAvatarUpload}
+                disabled={saving}
+                className="mt-3 px-6 py-2 bg-gradient-to-r from-orange-500 to-amber-400 text-white font-semibold rounded-full hover:scale-105 transition-transform shadow-md flex items-center gap-2"
+              >
+                <FaSave /> {saving ? "Saving..." : "Save Profile Picture"}
+              </button>
+            )}
+
             {successMsg && <p className="text-green-500 text-sm mt-2 font-medium">{successMsg}</p>}
           </div>
 

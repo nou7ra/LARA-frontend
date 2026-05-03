@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FaLightbulb, FaBookOpen, FaStar, FaRocket, FaBrain, FaChartLine } from "react-icons/fa";
 import api from "@/services/api";
@@ -16,26 +16,70 @@ export default function CoursesPage() {
   const [isHovered, setIsHovered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [examScore, setExamScore] = useState(60);
+  const [examLevel, setExamLevel] = useState("Beginner");
+
+  useEffect(() => {
+    const fetchLevelAndScore = async () => {
+      const lastScore = localStorage.getItem("lastExamScore");
+      const lastLevel = localStorage.getItem("lastExamLevel");
+      if (lastScore) setExamScore(parseInt(lastScore));
+      if (lastLevel) {
+        setExamLevel(lastLevel);
+      } else {
+        // ✅ لو مفيش في localStorage جيب من الـ profile
+        try {
+          const res = await api.get("/students/my-profile");
+          const level = res.data.data?.level;
+          if (level) setExamLevel(level);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    fetchLevelAndScore();
+  }, []);
 
   const handleRecommend = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    const interestsList = interest.split(",").map(s => s.trim()).filter(Boolean);
+    const skillsList = skills.split(",").map(s => s.trim()).filter(Boolean);
+    const previousCoursesList = previousCourses.split(",").map(s => s.trim()).filter(Boolean);
+
     try {
-      // ✅ حفظ الـ interests و skills في بروفايل الطالب
       await api.put("/students/update-profile", {
-        interests: interest.split(",").map(s => s.trim()).filter(Boolean),
-        skills: skills.split(",").map(s => s.trim()).filter(Boolean),
-        previousCourses: previousCourses.split(",").map(s => s.trim()).filter(Boolean),
+        interests: interestsList,
+        skills: skillsList,
+        previousCourses: previousCoursesList,
       });
 
-      // ✅ بعدين روح لصفحة الكورسات
+      const recResponse = await api.post("/api/recommendations/recommend", {
+        interests: interestsList,
+        skills: skillsList,
+        previous_courses: previousCoursesList,
+        current_level: examLevel,
+        exam_score: examScore,
+        full_name: "",
+        top_k: 5,
+      });
+
+      localStorage.setItem(
+        "recommendations",
+        JSON.stringify(recResponse.data.recommendations || [])
+      );
+
+      // امسح الـ exam data بعد ما استخدمناها
+      localStorage.removeItem("lastExamScore");
+      localStorage.removeItem("lastExamLevel");
+
       router.push("/courses-list");
+
     } catch (err: any) {
-      console.error("Error saving profile:", err);
-      setError("Failed to save. Please try again.");
-      // حتى لو فيه error نروح لصفحة الكورسات
+      console.error("Error:", err);
+      setError("Something went wrong. Redirecting...");
       router.push("/courses-list");
     } finally {
       setLoading(false);
@@ -44,7 +88,6 @@ export default function CoursesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 flex justify-center items-center p-5 relative overflow-hidden">
-      {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-10 left-10 w-64 h-64 bg-orange-200/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-10 right-10 w-80 h-80 bg-amber-200/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
@@ -80,7 +123,6 @@ export default function CoursesPage() {
       `}</style>
 
       <div className="w-full max-w-6xl relative z-10">
-        {/* Header Banner */}
         <div className="py-10 px-5 text-center mb-8 rounded-2xl animate-fadeInDown shadow-xl"
           style={{ background: "linear-gradient(135deg, #ffe0bb 0%, #ffb36c 50%, #ff9e47 100%)" }}>
           <div className="flex items-center justify-center gap-3 mb-3 animate-scaleIn" style={{ animationDelay: "0.2s" }}>
@@ -92,18 +134,20 @@ export default function CoursesPage() {
           <p className="text-gray-700 text-base max-w-2xl mx-auto animate-fadeInUp" style={{ animationDelay: "0.3s" }}>
             Enter your details and leverage AI to get personalized and effective course suggestions 🚀
           </p>
+          {examScore !== 60 && (
+            <div className="mt-3 inline-block bg-green-100 text-green-700 px-4 py-2 rounded-full text-sm font-semibold">
+              🎯 Based on your exam score: {examScore}% - Level: {examLevel}
+            </div>
+          )}
         </div>
 
-        {/* Main Card */}
         <div className="bg-white/95 backdrop-blur-sm flex flex-col lg:flex-row min-h-[500px] rounded-2xl overflow-hidden border-4 shadow-2xl animate-scaleIn"
           style={{ borderColor: "#ffcc94", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.15), 0 0 60px rgba(255,183,71,0.2)" }}>
 
-          {/* Left Side - Form */}
           <div className="flex-1 px-10 py-12 relative">
             <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-orange-100 to-transparent rounded-br-full opacity-50" />
 
             <form onSubmit={handleRecommend} className="flex flex-col gap-5 max-w-lg mx-auto">
-              {/* Interest */}
               <div className="animate-fadeInLeft" style={{ animationDelay: "0.4s" }}>
                 <label className="flex items-center gap-2 text-sm text-gray-800 font-semibold mb-2">
                   <FaLightbulb className="text-orange-500" /> Your interest:
@@ -118,7 +162,6 @@ export default function CoursesPage() {
                 </div>
               </div>
 
-              {/* Previous Courses */}
               <div className="animate-fadeInLeft" style={{ animationDelay: "0.5s" }}>
                 <label className="flex items-center gap-2 text-sm text-gray-800 font-semibold mb-2">
                   <FaBookOpen className="text-orange-500" /> Previous courses:
@@ -133,7 +176,6 @@ export default function CoursesPage() {
                 </div>
               </div>
 
-              {/* Skills */}
               <div className="animate-fadeInLeft" style={{ animationDelay: "0.6s" }}>
                 <label className="flex items-center gap-2 text-sm text-gray-800 font-semibold mb-2">
                   <FaStar className="text-orange-500" /> What are your skills?
@@ -150,7 +192,6 @@ export default function CoursesPage() {
 
               {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-              {/* Submit Button */}
               <button type="submit" disabled={loading}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
@@ -171,7 +212,6 @@ export default function CoursesPage() {
             </div>
           </div>
 
-          {/* Right Side - Image */}
           <div className="flex-1 min-h-[400px] lg:min-h-auto relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-t from-orange-900/50 via-transparent to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <Image src="/images/discover/Rectangle 4350.png" alt="AI Suggestion" width={600} height={500}
